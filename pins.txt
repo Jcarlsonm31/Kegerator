@@ -1,0 +1,55 @@
+Kegerator Pins (mega board)
+
+LCD
+1  GND
+2  5V
+3  to POT
+4  22
+5  GND
+6  15
+11 9
+12 10
+13 16
+14 17
+15 14 backlight
+17 GND
+
+POT
+(pins on left)
+top GND
+mid pin 3 LCD
+bot 5V
+
+WIFI
+sck 52
+miso 50
+mosi 51
+can be any
+cs 8
+en 5V
+IRQ 7
+RST 4
+
+PIR
+26
+
+RESET BUTTON
+6
+Resitor to GND
+
+ROTARY ENCODER (front of box to back)
+A0 CLK
+A1 DT
+4 SW
++
+-
+
+FLOWMETER
+24
+
+TEMP
+3
+
+RTC
+SDA 20
+SCL 21
