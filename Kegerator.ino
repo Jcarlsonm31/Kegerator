@@ -1,17 +1,49 @@
-// include the library code:
 #include <DHT.h>
 #include <EEPROM.h>
 #include <SPI.h>
+#include "Adafruit_GFX.h"
+#include "Adafruit_HX8357.h"
 
 #define TEMP 3        // temp sensor pin
 #define DHTTYPE DHT22 // temp sensor type DHT 22  (AM2302), AM2321
-#define BACKLIGHT 14  // LED backlight
-#define PIR 26         // PIR infrared sensor
-#define ROTARYBUTTON 5      // rotary pushbutton
-#define FLOWSENSORPIN 24
+#define BACKLIGHT 13  // TFT LED backlight
+#define PIR 7         // PIR infrared sensor
+#define FLOWSENSOR 24 // flow meter
+#define BUTTON1 5     // lighted button
+#define BUTTON1LED 11
+#define BUTTON2 6     // lighted button
+#define BUTTON2LED 12
+#define ROTARYBUTTON 4      // rotary pushbutton
 #define ROTARYCLK A0
 #define ROTARYDAT A1
+#define SCALECLK 14  // load sensor based scale
+#define SCALEDOUT 15
 #define BACKLIGHTDURATION 60  // time to leave backlight on once triggered
+#define TFT_CS 10
+#define TFT_DC 9
+#define TFT_RST 8
+Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, TFT_RST);
+#define BLACK 0x0000
+#define RED 0xF800
+#define DARKRED 0xC020
+#define YELLOW 0xF7E0
+#define DARKYELLOW 0xCE80
+#define ORANGE 0xFDC4
+#define BLUE 0x041F
+#define MEDBLUE 0x00DD
+#define DARKBLUE 0x02B5
+#define PURPLE 0xF81A
+#define LIGHTGREEN 0x07E0
+#define GREEN 0x07C0
+#define MEDGREEN 0x1742
+#define DARKGREEN 0x0520
+#define TEAL 0x279F
+#define TAN 0xFF73
+#define WHITE 0xFFFF
+#define GRAY 0xAD75
+#define LIGHTGRAY 0xBDF7
+#define BROWN 0x7421
+
 
 unsigned long rotaryCurrentTime;
 unsigned long rotaryLoopTime;
@@ -20,7 +52,6 @@ unsigned char rotaryEncoder_B;
 unsigned char rotaryEncoder_A_prev=0;
 char alphabet[57] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-!?$%&*',.[]()<>/=+ ";
 char beerName[21] = "STREET DOG IPA";
-int rotaryButtonState = HIGH;
 int pirState = LOW;   // we start, assuming no motion detected
 int pirVal = 0;       // state variable for reading the PIR pin status
 unsigned long pirDelay = 0; // time to wait until dimming backlight
@@ -40,8 +71,8 @@ volatile boolean pouringMode = false;
 volatile unsigned long pouringModeDuration = 0;
 int cursorPosition = 0;
 int alphabetCursorPosition = -1;
-volatile boolean displayUpdateNeeded = true;
-volatile boolean lcdClearNeeded = false;
+volatile boolean tftUpdateNeeded = true;
+volatile boolean tftClearNeeded = false;
 // use volatile because of intterupt usage
 volatile uint16_t pulses = 0;
 volatile uint16_t prevpulses = 0;
@@ -55,12 +86,14 @@ volatile float flowrate; // and use that to calculate a flow rate
 DHT dht(TEMP, DHTTYPE);
 
 void setup() {
-  Serial.begin(9600);
   pinMode(BACKLIGHT, OUTPUT);
+  digitalWrite(BACKLIGHT, HIGH);
+  tft.begin();
+  tft.setRotation(1);
+  tft.fillScreen(HX8357_BLACK);
   pinMode(PIR, INPUT);
-  digitalWrite(BACKLIGHT, LOW);
-  pinMode(FLOWSENSORPIN, INPUT);
-  digitalWrite(FLOWSENSORPIN, HIGH);
+  pinMode(FLOWSENSOR, INPUT);
+  digitalWrite(FLOWSENSOR, HIGH);
   pinMode(ROTARYCLK, INPUT);
   digitalWrite(ROTARYCLK, HIGH);
   pinMode(ROTARYDAT, INPUT);
@@ -69,7 +102,7 @@ void setup() {
   digitalWrite(ROTARYBUTTON, HIGH);
   rotaryCurrentTime = millis();
   rotaryLoopTime = rotaryCurrentTime; 
-  lastflowpinstate = digitalRead(FLOWSENSORPIN);
+  lastflowpinstate = digitalRead(FLOWSENSOR);
   useInterrupt(true); // flowmeter
   pirDelay = (millis() / 1000);
   randomSeed(analogRead(2));
@@ -77,10 +110,10 @@ void setup() {
   luckyBeerFound = false;
   dht.begin();
   EEPROM.get(0, beerName);
-  EEPROM.get(21, tappedDays);
-  EEPROM.get(24, beersRemaining);
+  EEPROM.get(26, tappedDays);
+  EEPROM.get(30, beersRemaining);
   checkTempDelay = millis();
-  tappedDuration = timeNow.unixtime();
+  tappedDuration = 0; //timeNow.unixtime();
 }
 
 void loop() {
@@ -89,17 +122,18 @@ void loop() {
   } 
   else if (pouringMode == true) {
     
-    if (lcdClearNeeded == true) {
-      lcd.clear();
-      delay(20);
-      lcdClearNeeded = false;
+    if (tftClearNeeded == true) {
+      //lcd.clear();
+      //delay(20);
+      //tftClearNeeded = false;
     }
     DisplayPouringMode();
   }
   else {
-    if (displayUpdateNeeded == true) {
+    if (tftUpdateNeeded == true) {
       UpdateDisplay();
     }  
+    /*
     if ((millis() - checkTempDelay) > 1000) {
       GetTemperature();
       GetTappedDaysAgo();
@@ -107,10 +141,54 @@ void loop() {
     }
     GetInfraredSensor();
     CheckBeerNameEntryButton();
-    CheckResetButton();
+    */
   }
 }
-
+// 18px char to char
+void UpdateDisplay() {
+  tft.setCursor(10, 20);
+  tft.setTextColor(LIGHTGREEN);
+  tft.setTextSize(3);
+  tft.print(beerName);
+  tft.setCursor(10, 80);
+  tft.setTextColor(LIGHTGRAY);
+  tft.print("Beers remaining:");  
+  tft.setCursor(324, 80);
+  tft.setTextColor(WHITE);
+  tft.print(int (beersRemaining));
+  tft.setCursor(10, 140);
+  tft.setTextColor(LIGHTGRAY);
+  tft.print("Temp:");
+  tft.setCursor(126, 140);
+  tft.setTextColor(WHITE);
+  tft.print(int(currentTemp));
+  tft.setCursor(162, 140);
+  tft.print("F");
+  tft.setCursor(10, 200);
+  tft.setTextColor(LIGHTGRAY);
+  tft.print("Tapped:");
+  tft.setCursor(162, 200);
+  tft.setTextColor(WHITE);
+  if (tappedDays == 0) {
+    tft.print("today");
+  } else {
+      tft.print(tappedDays);
+      if (tappedDays > 99) {
+        tft.setCursor(216, 200);
+      } else if (tappedDays > 9) {
+        tft.setCursor(198, 200);
+      } else {  
+        tft.setCursor(180, 200);  
+      }
+      tft.setTextColor(LIGHTGRAY);
+      if (tappedDays == 1) {
+        tft.print(" day ago");
+      } else {  
+        tft.print(" days ago");
+      }
+    }  
+  tftUpdateNeeded = false;
+}
 
 void GetTemperature() {
   currentTemp = int(dht.readTemperature(true)); // Read temperature as Fahrenheit (isFahrenheit = true)
@@ -120,18 +198,20 @@ void GetTemperature() {
   }
   if (currentTemp != prevTemp) {
     prevTemp = currentTemp;
-    displayUpdateNeeded = true;
+    tftUpdateNeeded = true;
   }
 }
 
 void GetTappedDaysAgo() {
+/*
   timeNow = rtc.now();
   if ((timeNow.unixtime() - tappedDuration) > 86400) {
     tappedDays += 1;
     EEPROM.put(21, tappedDays);
     tappedDuration = timeNow.unixtime();
-    displayUpdateNeeded = true;
+    tftUpdateNeeded = true;
   }
+*/
 }
 
 void GetInfraredSensor() {
@@ -153,8 +233,8 @@ void GetInfraredSensor() {
 }
 
 void CheckBeerNameEntryButton() {
-  rotaryButtonState = digitalRead(ROTARYBUTTON);
-  if (rotaryButtonState == LOW) {
+/*
+  if (digitalRead(ROTARYBUTTON) == LOW) {
     if ((millis() - textEntryDuration) > 3000) { // delay from exiting text entry mode before entering again
       textEntryMode = true;
       lcd.clear();
@@ -165,18 +245,19 @@ void CheckBeerNameEntryButton() {
       textEntryDuration = millis();
     }
   }
+*/
 }
 
 void BeerEntryMode() {
+/*
   lcd.setCursor(cursorPosition,0);
-  rotaryButtonState = digitalRead(ROTARYBUTTON);
   rotaryCurrentTime = millis();
-  if (rotaryButtonState == LOW) {
+  if (digitalRead(ROTARYBUTTON) == LOW) {
     if ((millis() - textEntryDuration) > 1000) { // hold for 1 second to exit text entry mode
       textEntryMode = false; 
       lcd.noBlink();
       EEPROM.put(0, beerName);
-      displayUpdateNeeded = true;
+      tftUpdateNeeded = true;
     } else {
       lcd.setCursor(0, 0);
       lcd.print(beerName);
@@ -217,11 +298,11 @@ void BeerEntryMode() {
   } else {
     textEntryDuration = millis();
   }
+*/
 }
 
 void Reset() {
-      timeNow = rtc.now();
-      tappedDuration = timeNow.unixtime();
+      tappedDuration = 0;
       beersRemaining = 40.8;
       EEPROM.put(24, beersRemaining);
       tappedDays = 0;
@@ -229,51 +310,11 @@ void Reset() {
       randomSeed(analogRead(2));
       luckyBeer = random(1,40);
       luckyBeerFound = false;
-      displayUpdateNeeded = true;
-}
-
-void UpdateDisplay() {
-  lcd.begin(20, 4);
-  delay(20);
-  lcd.print(beerName);
-  lcd.setCursor(0, 1);
-  lcd.print(int (beersRemaining));
-  lcd.setCursor(3, 1);
-  lcd.print("beers remaining");  
-  lcd.setCursor(0, 2);
-  lcd.print("Tapped ");
-  lcd.setCursor(7, 2);
-  if (tappedDays == 0) {
-    lcd.print("today");
-  } else {
-      lcd.print(tappedDays);
-      if (tappedDays > 99) {
-        lcd.setCursor(10, 2);
-      } else if (tappedDays > 9) {
-        lcd.setCursor(9, 2);
-      } else {  
-        lcd.setCursor(8, 2);  
-      }
-      if (tappedDays == 1) {
-        lcd.print(" day ago");
-      } else {  
-        lcd.print(" days ago");
-      }
-    }  
-  lcd.setCursor(0, 3);
-  lcd.print("Temp:");
-  lcd.setCursor(6, 3);
-  lcd.print(int(currentTemp));
-  lcd.setCursor(8, 3);
-  lcd.print("F");
-  if (rtcBatteryDead == true) {
-    lcd.setCursor(10, 3);    
-    lcd.print("Batt Dead");
-  }
-  displayUpdateNeeded = false;
+      tftUpdateNeeded = true;
 }
 
 void DisplayPouringMode() {
+/*
   if ((millis() - updatePouringDelay) > 100) {
     updatePouringDelay = millis();
     if (luckyBeer == int(beersRemaining)) {
@@ -291,6 +332,7 @@ void DisplayPouringMode() {
     lcd.setCursor(8, 2);
     lcd.print(int(floor(currentPour)));
   }
+*/
 }
 
 void GetBeersRemaining() {
@@ -311,7 +353,7 @@ void GetBeersRemaining() {
 
 // Interrupt is called once a millisecond, looks for any pulses from the flowmeter!
 SIGNAL(TIMER0_COMPA_vect) {
-  uint8_t x = digitalRead(FLOWSENSORPIN);
+  uint8_t x = digitalRead(FLOWSENSOR);
   
   if (x == lastflowpinstate) {
     lastflowratetimer++;
@@ -323,7 +365,7 @@ SIGNAL(TIMER0_COMPA_vect) {
         luckyBeer = 100;      
       }
       GetBeersRemaining();
-      displayUpdateNeeded = true;
+      tftUpdateNeeded = true;
     }
     return; // nothing changed!
   }
@@ -333,7 +375,7 @@ SIGNAL(TIMER0_COMPA_vect) {
     pulses++;
     if (pouringMode == false) {
       pouringMode = true;
-      lcdClearNeeded = true;
+      tftClearNeeded = true;
     }
     pouringModeDuration = millis();
     currentPour = pulses - prevpulses;
