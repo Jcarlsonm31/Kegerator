@@ -39,9 +39,10 @@ Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, TFT_RST);
 #define DARKGREEN 0x0520
 #define TEAL 0x279F
 #define TAN 0xFF73
-#define WHITE 0xFFFF
+#define WHITE 0xFFFFFF
+#define LIGHTGRAY 0xDEDB
+#define MEDGRAY 0xBDF7
 #define GRAY 0xAD75
-#define LIGHTGRAY 0xBDF7
 #define BROWN 0x7421
 
 
