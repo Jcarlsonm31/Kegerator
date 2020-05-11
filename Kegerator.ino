@@ -39,12 +39,13 @@ Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, TFT_RST);
 #define DARKGREEN 0x0520
 #define TEAL 0x279F
 #define TAN 0xFF73
-#define WHITE 0xFFFFFF
+#define WHITE 0xFFFF
 #define LIGHTGRAY 0xDEDB
 #define MEDGRAY 0xBDF7
 #define GRAY 0xAD75
 #define BROWN 0x7421
-
+#define DRAW  1 // for dual purpose draw/erase functions
+#define ERASE 0 
 
 unsigned long rotaryCurrentTime;
 unsigned long rotaryLoopTime;
@@ -80,9 +81,6 @@ volatile uint16_t prevpulses = 0;
 volatile uint8_t lastflowpinstate; // track the state of the pulse pin
 volatile uint32_t lastflowratetimer = 0; // you can try to keep time of how long it is between pulses
 volatile float flowrate; // and use that to calculate a flow rate
-
-// initialize the library with the numbers of the interface pins
-
 // Initialize DHT temp sensor.
 DHT dht(TEMP, DHTTYPE);
 
@@ -91,7 +89,6 @@ void setup() {
   digitalWrite(BACKLIGHT, HIGH);
   tft.begin();
   tft.setRotation(1);
-  tft.fillScreen(HX8357_BLACK);
   pinMode(PIR, INPUT);
   pinMode(FLOWSENSOR, INPUT);
   digitalWrite(FLOWSENSOR, HIGH);
@@ -115,6 +112,7 @@ void setup() {
   EEPROM.get(30, beersRemaining);
   checkTempDelay = millis();
   tappedDuration = 0; //timeNow.unixtime();
+  RefreshDisplay();
 }
 
 void loop() {
@@ -131,45 +129,96 @@ void loop() {
     DisplayPouringMode();
   }
   else {
-    if (tftUpdateNeeded == true) {
-      UpdateDisplay();
-    }  
-    /*
-    if ((millis() - checkTempDelay) > 1000) {
+    if ((millis() - checkTempDelay) > 5000) {
       GetTemperature();
-      GetTappedDaysAgo();
       checkTempDelay = millis();
     }
-    GetInfraredSensor();
-    CheckBeerNameEntryButton();
-    */
+    //GetTappedDaysAgo();
+    //GetInfraredSensor();
+    //CheckBeerNameEntryButton();
   }
 }
+
 // 18px char to char
-void UpdateDisplay() {
-  tft.setCursor(10, 20);
-  tft.setTextColor(LIGHTGREEN);
+void RefreshDisplay() {
+  tft.fillScreen(BLACK);
+  DrawBeerName(DRAW);
+  DrawBeersRemaining(DRAW, true); // true - draw full line, not just data
+  DrawTemp(DRAW, true, currentTemp);
+  DrawTappedDays(DRAW, true);
+  DrawKegWeight(DRAW, true);
+}
+
+void DrawBeerName(char draw) {
   tft.setTextSize(3);
+  tft.setCursor(10, 20);
+  if (draw == DRAW) {
+    tft.setTextColor(LIGHTGREEN);
+  } else {
+    tft.setTextColor(BLACK);        
+  }
   tft.print(beerName);
-  tft.setCursor(10, 80);
-  tft.setTextColor(LIGHTGRAY);
-  tft.print("Beers remaining:");  
+}
+
+void DrawBeersRemaining(char draw, bool fullLine) {
+  tft.setTextSize(3);
+  if (fullLine == true) {
+    tft.setCursor(10, 80);
+    if (draw == DRAW) {
+      tft.setTextColor(LIGHTGRAY);
+    } else {
+      tft.setTextColor(BLACK);        
+    }
+    tft.print("Beers remaining:");  
+  }
   tft.setCursor(324, 80);
-  tft.setTextColor(WHITE);
+  if (draw == DRAW) {
+    tft.setTextColor(WHITE);
+  } else {
+    tft.setTextColor(BLACK);        
+  }
   tft.print(int (beersRemaining));
-  tft.setCursor(10, 140);
-  tft.setTextColor(LIGHTGRAY);
-  tft.print("Temp:");
+}
+
+void DrawTemp(char draw, bool fullLine, int temp) {
+  tft.setTextSize(3);
+  if (fullLine == true) {
+    tft.setCursor(10, 140);
+    if (draw == DRAW) {
+      tft.setTextColor(LIGHTGRAY);
+    } else {
+      tft.setTextColor(BLACK);        
+    }
+    tft.print("Temp:");
+  }
   tft.setCursor(126, 140);
-  tft.setTextColor(WHITE);
-  tft.print(int(currentTemp));
+  if (draw == DRAW) {
+    tft.setTextColor(WHITE);
+  } else {
+    tft.setTextColor(BLACK);        
+  }
+  tft.print(temp);
   tft.setCursor(162, 140);
   tft.print("F");
+}
+
+void DrawTappedDays(char draw, bool fullLine) {
+  tft.setTextSize(3);
   tft.setCursor(10, 200);
-  tft.setTextColor(LIGHTGRAY);
-  tft.print("Tapped:");
+  if (fullLine == true) {
+    if (draw == DRAW) {
+      tft.setTextColor(LIGHTGRAY);
+    } else {
+      tft.setTextColor(BLACK);        
+    }
+    tft.print("Tapped:");
+  }
   tft.setCursor(162, 200);
-  tft.setTextColor(WHITE);
+  if (draw == DRAW) {
+    tft.setTextColor(WHITE);
+  } else {
+    tft.setTextColor(BLACK);        
+  }
   if (tappedDays == 0) {
     tft.print("today");
   } else {
@@ -186,9 +235,28 @@ void UpdateDisplay() {
         tft.print(" day ago");
       } else {  
         tft.print(" days ago");
-      }
-    }  
-  tftUpdateNeeded = false;
+      }  
+  }
+}
+
+void DrawKegWeight(char draw, bool fullLine) {
+  tft.setTextSize(3);
+  if (fullLine == true) {
+    tft.setCursor(10, 260);
+    if (draw == DRAW) {
+      tft.setTextColor(LIGHTGRAY);
+    } else {
+      tft.setTextColor(BLACK);        
+    }
+    tft.print("Keg weight:");  
+  }
+  tft.setCursor(216, 260);
+  if (draw == DRAW) {
+    tft.setTextColor(WHITE);
+  } else {
+    tft.setTextColor(BLACK);        
+  }
+  tft.print("41.14");
 }
 
 void GetTemperature() {
@@ -198,8 +266,9 @@ void GetTemperature() {
     currentTemp = prevTemp;
   }
   if (currentTemp != prevTemp) {
+    DrawTemp(ERASE, false, prevTemp);
     prevTemp = currentTemp;
-    tftUpdateNeeded = true;
+    DrawTemp(DRAW, false, currentTemp);
   }
 }
 
@@ -233,7 +302,7 @@ void GetInfraredSensor() {
   }
 }
 
-void CheckBeerNameEntryButton() {
+void CheckBeerNameEntryButton() { //menu entry mode
 /*
   if (digitalRead(ROTARYBUTTON) == LOW) {
     if ((millis() - textEntryDuration) > 3000) { // delay from exiting text entry mode before entering again
