@@ -6,7 +6,7 @@
 
 #define TEMP 3        // temp sensor pin
 #define DHTTYPE DHT22 // temp sensor type DHT 22  (AM2302), AM2321
-#define BACKLIGHT 13  // TFT LED backlight
+#define TFTBACKLIGHT 13  // TFT LED backlight
 #define PIR 7         // PIR infrared sensor
 #define FLOWSENSOR 24 // flow meter
 #define BUTTON1 5     // lighted button
@@ -18,7 +18,7 @@
 #define ROTARYDAT A1
 #define SCALECLK 14  // load sensor based scale
 #define SCALEDOUT 15
-#define BACKLIGHTDURATION 60  // time to leave backlight on once triggered
+#define BACKLIGHTDURATION 10  // time to leave backlight on once triggered
 #define TFT_CS 10
 #define TFT_DC 9
 #define TFT_RST 8
@@ -42,10 +42,11 @@ Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, TFT_RST);
 #define WHITE 0xFFFF
 #define LIGHTGRAY 0xDEDB
 #define MEDGRAY 0xBDF7
-#define GRAY 0xAD75
+#define GRAY 0x9CD3
 #define BROWN 0x7421
-#define DRAW  1 // for dual purpose draw/erase functions
-#define ERASE 0 
+#define NORMAL 0 // display modes
+#define MENU  1 
+#define POURING 2 
 
 unsigned long rotaryCurrentTime;
 unsigned long rotaryLoopTime;
@@ -54,7 +55,7 @@ unsigned char rotaryEncoder_B;
 unsigned char rotaryEncoder_A_prev=0;
 char alphabet[57] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-!?$%&*',.[]()<>/=+ ";
 char beerName[21] = "STREET DOG IPA";
-int pirState = LOW;   // we start, assuming no motion detected
+int pirState = HIGH;   // we start, assuming no motion detected
 int pirVal = 0;       // state variable for reading the PIR pin status
 unsigned long pirDelay = 0; // time to wait until dimming backlight
 unsigned long tappedDuration = 0; // count of days since last reset (new keg tapped)
@@ -67,9 +68,8 @@ volatile int luckyBeer = 0;
 volatile boolean luckyBeerFound = false;
 volatile float currentPour = 0.0;
 int tappedDays = 0;
-boolean textEntryMode = false;
-unsigned long textEntryDuration = 0;
-volatile boolean pouringMode = false;
+unsigned long rotaryButtonDelay = 0;
+volatile char displayMode = NORMAL;
 volatile unsigned long pouringModeDuration = 0;
 int cursorPosition = 0;
 int alphabetCursorPosition = -1;
@@ -85,10 +85,14 @@ volatile float flowrate; // and use that to calculate a flow rate
 DHT dht(TEMP, DHTTYPE);
 
 void setup() {
-  pinMode(BACKLIGHT, OUTPUT);
-  digitalWrite(BACKLIGHT, HIGH);
   tft.begin();
   tft.setRotation(1);
+  pinMode(TFTBACKLIGHT, OUTPUT);
+  digitalWrite(TFTBACKLIGHT, HIGH);
+  pinMode(BUTTON1LED, OUTPUT);
+  analogWrite(BUTTON1LED, 55);
+  pinMode(BUTTON2LED, OUTPUT);
+  analogWrite(BUTTON2LED, 55);
   pinMode(PIR, INPUT);
   pinMode(FLOWSENSOR, INPUT);
   digitalWrite(FLOWSENSOR, HIGH);
@@ -111,16 +115,16 @@ void setup() {
   EEPROM.get(26, tappedDays);
   EEPROM.get(30, beersRemaining);
   checkTempDelay = millis();
+  rotaryButtonDelay = millis();
   tappedDuration = 0; //timeNow.unixtime();
-  RefreshDisplay();
+  ResetNormalDisplay();
 }
 
 void loop() {
-  if (textEntryMode == true) {
-    BeerEntryMode();
+  if (displayMode == MENU) {
+    MenuMode();
   } 
-  else if (pouringMode == true) {
-    
+  else if (displayMode == POURING) {
     if (tftClearNeeded == true) {
       //lcd.clear();
       //delay(20);
@@ -132,93 +136,60 @@ void loop() {
     if ((millis() - checkTempDelay) > 5000) {
       GetTemperature();
       checkTempDelay = millis();
-    }
+    } 
+    CheckMenuMode();    
+    CheckPIRSensor();
     //GetTappedDaysAgo();
     //GetInfraredSensor();
-    //CheckBeerNameEntryButton();
   }
 }
 
 // 18px char to char
-void RefreshDisplay() {
+void ResetNormalDisplay() {
   tft.fillScreen(BLACK);
-  DrawBeerName(DRAW);
-  DrawBeersRemaining(DRAW, true); // true - draw full line, not just data
-  DrawTemp(DRAW, true, currentTemp);
-  DrawTappedDays(DRAW, true);
-  DrawKegWeight(DRAW, true);
+  DrawBeerName();
+  DrawBeersRemaining();
+  DrawTemp();
+  DrawTappedDays();
+  DrawKegWeight();
 }
 
-void DrawBeerName(char draw) {
+void DrawBeerName() {
   tft.setTextSize(3);
   tft.setCursor(10, 20);
-  if (draw == DRAW) {
-    tft.setTextColor(LIGHTGREEN);
-  } else {
-    tft.setTextColor(BLACK);        
-  }
+  tft.setTextColor(LIGHTGREEN, BLACK);
   tft.print(beerName);
 }
 
-void DrawBeersRemaining(char draw, bool fullLine) {
+void DrawBeersRemaining() {
   tft.setTextSize(3);
-  if (fullLine == true) {
-    tft.setCursor(10, 80);
-    if (draw == DRAW) {
-      tft.setTextColor(LIGHTGRAY);
-    } else {
-      tft.setTextColor(BLACK);        
-    }
-    tft.print("Beers remaining:");  
-  }
+  tft.setCursor(10, 80);
+  tft.setTextColor(GRAY, BLACK);
+  tft.print("Beers remaining:");  
   tft.setCursor(324, 80);
-  if (draw == DRAW) {
-    tft.setTextColor(WHITE);
-  } else {
-    tft.setTextColor(BLACK);        
-  }
+  tft.setTextColor(WHITE, BLACK);
   tft.print(int (beersRemaining));
 }
 
-void DrawTemp(char draw, bool fullLine, int temp) {
+void DrawTemp() {
   tft.setTextSize(3);
-  if (fullLine == true) {
-    tft.setCursor(10, 140);
-    if (draw == DRAW) {
-      tft.setTextColor(LIGHTGRAY);
-    } else {
-      tft.setTextColor(BLACK);        
-    }
-    tft.print("Temp:");
-  }
+  tft.setCursor(10, 140);
+  tft.setTextColor(GRAY, BLACK);
+  tft.print("Temp:");
   tft.setCursor(126, 140);
-  if (draw == DRAW) {
-    tft.setTextColor(WHITE);
-  } else {
-    tft.setTextColor(BLACK);        
-  }
-  tft.print(temp);
+  tft.setTextColor(WHITE, BLACK);
+  tft.print(currentTemp);
   tft.setCursor(162, 140);
   tft.print("F");
 }
 
-void DrawTappedDays(char draw, bool fullLine) {
+void DrawTappedDays() {
   tft.setTextSize(3);
   tft.setCursor(10, 200);
-  if (fullLine == true) {
-    if (draw == DRAW) {
-      tft.setTextColor(LIGHTGRAY);
-    } else {
-      tft.setTextColor(BLACK);        
-    }
-    tft.print("Tapped:");
-  }
+  tft.setTextColor(GRAY, BLACK);
+  tft.print("Tapped:");
   tft.setCursor(162, 200);
-  if (draw == DRAW) {
-    tft.setTextColor(WHITE);
-  } else {
-    tft.setTextColor(BLACK);        
-  }
+  tft.setTextColor(WHITE, BLACK);
   if (tappedDays == 0) {
     tft.print("today");
   } else {
@@ -230,7 +201,7 @@ void DrawTappedDays(char draw, bool fullLine) {
       } else {  
         tft.setCursor(180, 200);  
       }
-      tft.setTextColor(LIGHTGRAY);
+      tft.setTextColor(GRAY);
       if (tappedDays == 1) {
         tft.print(" day ago");
       } else {  
@@ -239,24 +210,24 @@ void DrawTappedDays(char draw, bool fullLine) {
   }
 }
 
-void DrawKegWeight(char draw, bool fullLine) {
+void DrawKegWeight() {
   tft.setTextSize(3);
-  if (fullLine == true) {
-    tft.setCursor(10, 260);
-    if (draw == DRAW) {
-      tft.setTextColor(LIGHTGRAY);
-    } else {
-      tft.setTextColor(BLACK);        
-    }
-    tft.print("Keg weight:");  
-  }
+  tft.setCursor(10, 260);
+  tft.setTextColor(GRAY, BLACK);
+  tft.print("Keg weight:");  
   tft.setCursor(216, 260);
-  if (draw == DRAW) {
-    tft.setTextColor(WHITE);
-  } else {
-    tft.setTextColor(BLACK);        
-  }
+  tft.setTextColor(WHITE, BLACK);
   tft.print("41.14");
+}
+
+void MenuMode() {
+  if (digitalRead(ROTARYBUTTON) == LOW) {
+    if ((millis() - rotaryButtonDelay) > 1000) {
+      rotaryButtonDelay = millis();
+      displayMode = NORMAL;
+      ResetNormalDisplay();
+    }
+  }  
 }
 
 void GetTemperature() {
@@ -265,11 +236,7 @@ void GetTemperature() {
   if ((isnan(currentTemp)) || (currentTemp == 0)) {
     currentTemp = prevTemp;
   }
-  if (currentTemp != prevTemp) {
-    DrawTemp(ERASE, false, prevTemp);
-    prevTemp = currentTemp;
-    DrawTemp(DRAW, false, currentTemp);
-  }
+  DrawTemp();
 }
 
 void GetTappedDaysAgo() {
@@ -284,38 +251,66 @@ void GetTappedDaysAgo() {
 */
 }
 
-void GetInfraredSensor() {
+void CheckPIRSensor() {
   pirVal = digitalRead(PIR);  // read input value
   if (pirVal == HIGH) {            // check if the input is HIGH
     if (pirState == LOW) {
       pirState = HIGH;
-      digitalWrite(BACKLIGHT, HIGH);  // turn LED ON
       pirDelay = (millis() / 1000);      
+      FadeLEDs(true); // turn LEDs ON
     }
   } else {
       if ((millis() / 1000) - pirDelay > BACKLIGHTDURATION) {
         if (pirState == HIGH){
-          digitalWrite(BACKLIGHT, LOW); // turn LED OFF
           pirState = LOW;
+          FadeLEDs(false); // turn LEDs OFF
         }
       }
   }
 }
 
-void CheckBeerNameEntryButton() { //menu entry mode
-/*
+void FadeLEDs(bool OnOff) {
+  int LEDBrightness = 0;
+  int LEDFadeAmount = 1;  // try to fade up to less than 100%
+  int TFTBrightness = 0;
+  int TFTFadeAmount = 5;
+  if (OnOff == true) { // fade on
+    for (int x=0; x<51; x++) {
+      LEDBrightness = LEDBrightness + LEDFadeAmount;
+      TFTBrightness = TFTBrightness + TFTFadeAmount;
+      analogWrite(BUTTON1LED, LEDBrightness);
+      analogWrite(BUTTON2LED, LEDBrightness);
+      analogWrite(TFTBACKLIGHT, TFTBrightness);
+      delay(30);
+    }
+    analogWrite(BUTTON1LED, 55);
+    analogWrite(BUTTON2LED, 55);
+    digitalWrite(TFTBACKLIGHT, HIGH);
+  } else { // fade off
+    LEDBrightness = 51;
+    TFTBrightness = 255;
+    for (int x=0; x<51; x++) {
+      LEDBrightness = LEDBrightness - LEDFadeAmount;
+      TFTBrightness = TFTBrightness - TFTFadeAmount;
+      analogWrite(BUTTON1LED, LEDBrightness);
+      analogWrite(BUTTON2LED, LEDBrightness);
+      analogWrite(TFTBACKLIGHT, TFTBrightness);
+      delay(30);
+    }
+    digitalWrite(BUTTON1LED, LOW);
+    digitalWrite(BUTTON2LED, LOW);
+    digitalWrite(TFTBACKLIGHT, LOW);
+  }
+}
+
+void CheckMenuMode() { //menu entry mode
   if (digitalRead(ROTARYBUTTON) == LOW) {
-    if ((millis() - textEntryDuration) > 3000) { // delay from exiting text entry mode before entering again
-      textEntryMode = true;
-      lcd.clear();
-      delay(20);
-      lcd.print(beerName);
-      lcd.blink();
-      cursorPosition = 19 ;
-      textEntryDuration = millis();
+    if ((millis() - rotaryButtonDelay) > 1000) {
+      rotaryButtonDelay = millis();
+      displayMode = MENU;
+      tft.fillScreen(BLACK);
     }
   }
-*/
 }
 
 void BeerEntryMode() {
@@ -427,8 +422,8 @@ SIGNAL(TIMER0_COMPA_vect) {
   
   if (x == lastflowpinstate) {
     lastflowratetimer++;
-    if ((pouringMode == true) && ((millis() - pouringModeDuration) > 3000)) { // haven't poured for 5 seconds
-      pouringMode = false;
+    if ((displayMode == POURING) && ((millis() - pouringModeDuration) > 3000)) { // haven't poured for 5 seconds
+      displayMode = NORMAL;
       currentPour = 0.0;
       updatePouringDelay = 0;
       if (luckyBeerFound == true) {
@@ -443,8 +438,8 @@ SIGNAL(TIMER0_COMPA_vect) {
   if (x == HIGH) {
     //low to high transition!
     pulses++;
-    if (pouringMode == false) {
-      pouringMode = true;
+    if (displayMode != POURING) {
+      displayMode = POURING;
       tftClearNeeded = true;
     }
     pouringModeDuration = millis();
