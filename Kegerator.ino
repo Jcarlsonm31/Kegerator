@@ -4,6 +4,14 @@
 #include "Adafruit_GFX.h"
 #include "Adafruit_HX8357.h"
 
+#define ROTARYA 18 // rotary knob A
+#define ROTARYB 19 // rotary knob B
+volatile byte rotaryAFlag = 0; // let's us know when we're expecting a rising edge on pinA to signal that the encoder has arrived at a detent
+volatile byte rotaryBFlag = 0; // let's us know when we're expecting a rising edge on pinB to signal that the encoder has arrived at a detent (opposite direction to when aFlag is set)
+volatile byte rotaryReading = 0; //somewhere to store the direct values we read from our interrupt pins before checking to see if we have moved a whole detent
+volatile boolean updateRotaryLeft = false;
+volatile boolean updateRotaryRight = false;
+
 #define TEMP 3        // temp sensor pin
 #define DHTTYPE DHT22 // temp sensor type DHT 22  (AM2302), AM2321
 #define TFTBACKLIGHT 13  // TFT LED backlight
@@ -14,8 +22,6 @@
 #define BUTTON2 6     // lighted button
 #define BUTTON2LED 12
 #define ROTARYBUTTON 4      // rotary pushbutton
-#define ROTARYCLK A0
-#define ROTARYDAT A1
 #define SCALECLK 14  // load sensor based scale
 #define SCALEDOUT 15
 #define BACKLIGHTDURATION 60  // time to leave backlight on once triggered
@@ -54,11 +60,6 @@ Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, TFT_RST);
 
 char mainMenuChoices[NUMMENUITEMS][15] = { "Beer Name", "Reset", "Zero Scale" };
 char mainMenuChoice = 0;
-unsigned long rotaryCurrentTime;
-unsigned long rotaryLoopTime;
-unsigned char rotaryEncoder_A;
-unsigned char rotaryEncoder_B;
-unsigned char rotaryEncoder_A_prev=0;
 char alphabet[57] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-!?$%&*',.[]()<>/=+ ";
 char beerName[21] = "STREET DOG IPA";
 int pirState = HIGH;   // we start, assuming no motion detected
@@ -93,6 +94,10 @@ DHT dht(TEMP, DHTTYPE);
 
 void setup() {
   Serial.begin(9600);
+  pinMode(ROTARYA, INPUT_PULLUP);
+  pinMode(ROTARYB, INPUT_PULLUP);                              // Reversed Rotary pins from pin definitions prevents skipping
+  attachInterrupt(digitalPinToInterrupt(18), RotaryB, RISING); // set an interrupt on ROTARYB, looking for a rising edge signal and executing the "RotaryA" Interrupt Service Routine (below)
+  attachInterrupt(digitalPinToInterrupt(19), RotaryA, RISING); // set an interrupt on ROTARYA, looking for a rising edge signal and executing the "RotaryB" Interrupt Service Routine (below)
   tft.begin();
   tft.setRotation(1);
   pinMode(TFTBACKLIGHT, OUTPUT);
@@ -108,14 +113,8 @@ void setup() {
   pinMode(PIR, INPUT);
   pinMode(FLOWSENSOR, INPUT);
   digitalWrite(FLOWSENSOR, HIGH);
-  pinMode(ROTARYCLK, INPUT);
-  digitalWrite(ROTARYCLK, HIGH);
-  pinMode(ROTARYDAT, INPUT);
-  digitalWrite(ROTARYDAT, HIGH);
   pinMode(ROTARYBUTTON, INPUT);
   digitalWrite(ROTARYBUTTON, HIGH);
-  rotaryCurrentTime = millis();
-  rotaryLoopTime = rotaryCurrentTime; 
   lastflowpinstate = digitalRead(FLOWSENSOR);
   useInterrupt(true); // flowmeter
   pirDelay = (millis() / 1000);
@@ -280,23 +279,19 @@ void MainMenuInput() {
           break;
       }
     }
-  } else {
-    switch(CheckRotaryEncoder()) {
-    case NOOP :
-      break;
-    case RIGHT :
+  } else if (updateRotaryLeft == true) {
+      updateRotaryLeft = false;
       mainMenuChoice--;
       if (mainMenuChoice < 0) {
         mainMenuChoice = NUMMENUITEMS-1;
       }
-    case LEFT :
+  } else if (updateRotaryRight == true) {
+      updateRotaryRight = false;
       mainMenuChoice++;
       if (mainMenuChoice > NUMMENUITEMS-1) {
         mainMenuChoice = 0;
       }
-      break;
-    }
-  }
+  }    
 }
 
 void GetTemperature() {
@@ -378,7 +373,8 @@ void CheckMenuMode() { //menu entry mode
       rotaryButtonDelay = millis();
       displayMode = MENU;
       tft.fillScreen(BLACK);
-    }
+      updateRotaryLeft = false;
+      updateRotaryRight = false;    }
   }
 }
 
@@ -489,31 +485,32 @@ void GetBeersRemaining() {
   }
 }
 
-int CheckRotaryEncoder() {  
-  rotaryCurrentTime = millis();
-  if (rotaryCurrentTime >= (rotaryLoopTime + 5)) { // rotary encoder
-    // 5ms since last check of encoder = 200Hz  
-    rotaryEncoder_A = digitalRead(ROTARYDAT);    // Read encoder pins
-    rotaryEncoder_B = digitalRead(ROTARYCLK);   
-    rotaryLoopTime = rotaryCurrentTime;  // Updates loopTime
-    if((!rotaryEncoder_A) && (rotaryEncoder_A_prev)){
-      rotaryEncoder_A_prev = rotaryEncoder_A;     // Store value of A for next time    
-      // A has gone from high to low 
-      if(rotaryEncoder_B) {
-        // B is high so clockwise
-         return RIGHT;
-       } else {
-         // B is low so counter-clockwise      
-         return LEFT;
-       }   
-    } else {
-      rotaryEncoder_A_prev = rotaryEncoder_A;     // Store value of A for next time    
-      return NOOP;   
-    }
+// Handle rotary encoder interrupts
+void RotaryA(){
+  rotaryReading = PIND & 0xC; // read all eight pin values then strip away all but pinA and pinB's values
+  if(rotaryReading == B00001100 && rotaryAFlag) { //check that we have both pins at detent (HIGH) and that we are expecting detent on this pin's rising edge
+    updateRotaryRight = true;
+    rotaryBFlag = 0; //reset flags for the next turn
+    rotaryAFlag = 0; //reset flags for the next turn
+  }
+  else if (rotaryReading == B00000100) {
+    rotaryBFlag = 1; //signal that we're expecting pinB to signal the transition to detent from free rotation
   }
 }
-  
-// Interrupt is called once a millisecond, looks for any pulses from the flowmeter!
+
+void RotaryB(){
+  rotaryReading = PIND & 0xC; //read all eight pin values then strip away all but pinA and pinB's values
+  if (rotaryReading == B00001100 && rotaryBFlag) { //check that we have both pins at detent (HIGH) and that we are expecting detent on this pin's rising edge
+    updateRotaryLeft = true;
+    rotaryBFlag = 0; //reset flags for the next turn
+    rotaryAFlag = 0; //reset flags for the next turn
+  }
+  else if (rotaryReading == B00001000) {
+    rotaryAFlag = 1; //signal that we're expecting pinA to signal the transition to detent from free rotation
+  }
+}
+
+// Flowmeter Interrupt is called once a millisecond, looks for any pulses from the flowmeter!
 SIGNAL(TIMER0_COMPA_vect) {
   uint8_t x = digitalRead(FLOWSENSOR);
   
