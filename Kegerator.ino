@@ -18,7 +18,7 @@
 #define ROTARYDAT A1
 #define SCALECLK 14  // load sensor based scale
 #define SCALEDOUT 15
-#define BACKLIGHTDURATION 10  // time to leave backlight on once triggered
+#define BACKLIGHTDURATION 60  // time to leave backlight on once triggered
 #define TFT_CS 10
 #define TFT_DC 9
 #define TFT_RST 8
@@ -44,10 +44,16 @@ Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, TFT_RST);
 #define MEDGRAY 0xBDF7
 #define GRAY 0x9CD3
 #define BROWN 0x7421
+#define NUMMENUITEMS 3
 #define NORMAL 0 // display modes
 #define MENU  1 
 #define POURING 2 
+#define NOOP 0 // rotary encoder return codes
+#define RIGHT 1
+#define LEFT 2
 
+char mainMenuChoices[NUMMENUITEMS][15] = { "Beer Name", "Reset", "Zero Scale" };
+char mainMenuChoice = 0;
 unsigned long rotaryCurrentTime;
 unsigned long rotaryLoopTime;
 unsigned char rotaryEncoder_A;
@@ -69,6 +75,7 @@ volatile boolean luckyBeerFound = false;
 volatile float currentPour = 0.0;
 int tappedDays = 0;
 unsigned long rotaryButtonDelay = 0;
+unsigned long buttonDelay = 0;
 volatile char displayMode = NORMAL;
 volatile unsigned long pouringModeDuration = 0;
 int cursorPosition = 0;
@@ -85,6 +92,7 @@ volatile float flowrate; // and use that to calculate a flow rate
 DHT dht(TEMP, DHTTYPE);
 
 void setup() {
+  Serial.begin(9600);
   tft.begin();
   tft.setRotation(1);
   pinMode(TFTBACKLIGHT, OUTPUT);
@@ -93,6 +101,10 @@ void setup() {
   analogWrite(BUTTON1LED, 55);
   pinMode(BUTTON2LED, OUTPUT);
   analogWrite(BUTTON2LED, 55);
+  pinMode(BUTTON1, INPUT);
+  digitalWrite(BUTTON1, LOW);
+  pinMode(BUTTON2, INPUT);
+  digitalWrite(BUTTON2, LOW);
   pinMode(PIR, INPUT);
   pinMode(FLOWSENSOR, INPUT);
   digitalWrite(FLOWSENSOR, HIGH);
@@ -114,8 +126,6 @@ void setup() {
   EEPROM.get(0, beerName);
   EEPROM.get(26, tappedDays);
   EEPROM.get(30, beersRemaining);
-  checkTempDelay = millis();
-  rotaryButtonDelay = millis();
   tappedDuration = 0; //timeNow.unixtime();
   ResetNormalDisplay();
 }
@@ -146,6 +156,8 @@ void loop() {
 
 // 18px char to char
 void ResetNormalDisplay() {
+  displayMode = NORMAL;
+  mainMenuChoice = 0;
   tft.fillScreen(BLACK);
   DrawBeerName();
   DrawBeersRemaining();
@@ -221,13 +233,70 @@ void DrawKegWeight() {
 }
 
 void MenuMode() {
+  DisplayMainMenu();
+  MainMenuInput();
   if (digitalRead(ROTARYBUTTON) == LOW) {
-    if ((millis() - rotaryButtonDelay) > 1000) {
+    if ((millis() - rotaryButtonDelay) > 500) {
       rotaryButtonDelay = millis();
-      displayMode = NORMAL;
       ResetNormalDisplay();
     }
   }  
+}
+
+void DisplayMainMenu() {
+  for (int x=0; x < NUMMENUITEMS; x++) {
+    DrawMainMenuChoices(x, mainMenuChoice);  
+  }
+}
+
+void DrawMainMenuChoices(int currentItem, int menuChoice) {
+  tft.setTextSize(3);
+  if (currentItem == menuChoice) {
+    tft.setTextColor(LIGHTGREEN);    
+  } else {
+    tft.setTextColor(WHITE);
+  }
+  tft.setCursor(10, (20+(currentItem * 50)));
+  tft.print(currentItem+1);     
+  tft.setCursor(22, (20+(currentItem * 50)));
+  tft.print(". ");     
+  tft.setCursor(46, (20+(currentItem * 50)));
+  tft.print(mainMenuChoices[currentItem]);
+}
+
+void MainMenuInput() {
+  if ((digitalRead(BUTTON1) == HIGH) || (digitalRead(BUTTON2) == HIGH)) {
+    if ((millis() - buttonDelay) > 500) {
+      buttonDelay = millis();
+      switch(mainMenuChoice) {
+        case 0 :
+          EditBeerName();
+          break;
+        case 1 :
+          ResetNewKeg();          
+          break;
+        case 2 :
+          ZeroScale();
+          break;
+      }
+    }
+  } else {
+    switch(CheckRotaryEncoder()) {
+    case NOOP :
+      break;
+    case RIGHT :
+      mainMenuChoice--;
+      if (mainMenuChoice < 0) {
+        mainMenuChoice = NUMMENUITEMS-1;
+      }
+    case LEFT :
+      mainMenuChoice++;
+      if (mainMenuChoice > NUMMENUITEMS-1) {
+        mainMenuChoice = 0;
+      }
+      break;
+    }
+  }
 }
 
 void GetTemperature() {
@@ -244,7 +313,7 @@ void GetTappedDaysAgo() {
   timeNow = rtc.now();
   if ((timeNow.unixtime() - tappedDuration) > 86400) {
     tappedDays += 1;
-    EEPROM.put(21, tappedDays);
+    EEPROM.put(26, tappedDays);
     tappedDuration = timeNow.unixtime();
     tftUpdateNeeded = true;
   }
@@ -305,7 +374,7 @@ void FadeLEDs(bool OnOff) {
 
 void CheckMenuMode() { //menu entry mode
   if (digitalRead(ROTARYBUTTON) == LOW) {
-    if ((millis() - rotaryButtonDelay) > 1000) {
+    if ((millis() - rotaryButtonDelay) > 500) {
       rotaryButtonDelay = millis();
       displayMode = MENU;
       tft.fillScreen(BLACK);
@@ -313,7 +382,7 @@ void CheckMenuMode() { //menu entry mode
   }
 }
 
-void BeerEntryMode() {
+void EditBeerName() {
 /*
   lcd.setCursor(cursorPosition,0);
   rotaryCurrentTime = millis();
@@ -366,16 +435,20 @@ void BeerEntryMode() {
 */
 }
 
-void Reset() {
-      tappedDuration = 0;
-      beersRemaining = 40.8;
-      EEPROM.put(24, beersRemaining);
-      tappedDays = 0;
-      EEPROM.put(21, tappedDays);
-      randomSeed(analogRead(2));
-      luckyBeer = random(1,40);
-      luckyBeerFound = false;
-      tftUpdateNeeded = true;
+void ZeroScale() {
+  
+}
+
+void ResetNewKeg() {
+  tappedDuration = 0;
+  tappedDays = 0;
+  EEPROM.put(26, tappedDays);
+  beersRemaining = 40.8;
+  EEPROM.put(30, beersRemaining);
+  randomSeed(analogRead(2));
+  luckyBeer = random(1,40);
+  luckyBeerFound = false;
+  ResetNormalDisplay();
 }
 
 void DisplayPouringMode() {
@@ -412,10 +485,34 @@ void GetBeersRemaining() {
       beersRemaining = 0.0;
     }
     prevpulses = pulses;
-    EEPROM.put(24, beersRemaining);
+    EEPROM.put(30, beersRemaining);
   }
 }
 
+int CheckRotaryEncoder() {  
+  rotaryCurrentTime = millis();
+  if (rotaryCurrentTime >= (rotaryLoopTime + 5)) { // rotary encoder
+    // 5ms since last check of encoder = 200Hz  
+    rotaryEncoder_A = digitalRead(ROTARYDAT);    // Read encoder pins
+    rotaryEncoder_B = digitalRead(ROTARYCLK);   
+    rotaryLoopTime = rotaryCurrentTime;  // Updates loopTime
+    if((!rotaryEncoder_A) && (rotaryEncoder_A_prev)){
+      rotaryEncoder_A_prev = rotaryEncoder_A;     // Store value of A for next time    
+      // A has gone from high to low 
+      if(rotaryEncoder_B) {
+        // B is high so clockwise
+         return RIGHT;
+       } else {
+         // B is low so counter-clockwise      
+         return LEFT;
+       }   
+    } else {
+      rotaryEncoder_A_prev = rotaryEncoder_A;     // Store value of A for next time    
+      return NOOP;   
+    }
+  }
+}
+  
 // Interrupt is called once a millisecond, looks for any pulses from the flowmeter!
 SIGNAL(TIMER0_COMPA_vect) {
   uint8_t x = digitalRead(FLOWSENSOR);
