@@ -52,16 +52,16 @@ Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, TFT_RST);
 #define BROWN 0x7421
 #define NUMMENUITEMS 3
 #define NORMAL 0 // display modes
-#define MENU  1 
+#define SETUP  1 
 #define POURING 2 
 #define NOOP 0 // rotary encoder return codes
 #define RIGHT 1
 #define LEFT 2
 
-char mainMenuChoices[NUMMENUITEMS][15] = { "Beer Name", "Reset", "Zero Scale" };
-char mainMenuChoice = 0;
+char setupMenuChoices[NUMMENUITEMS][15] = { "Beer Name", "Reset", "Zero Scale" };
+char setupMenuChoice = 0;
 char alphabet[57] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-!?$%&*',.[]()<>/=+ ";
-char beerName[21] = "STREET DOG IPA";
+char beerName[25] = "STREET DOG IPA"; // max 24 char beer name
 int pirState = HIGH;   // we start, assuming no motion detected
 int pirVal = 0;       // state variable for reading the PIR pin status
 unsigned long pirDelay = 0; // time to wait until dimming backlight
@@ -130,8 +130,8 @@ void setup() {
 }
 
 void loop() {
-  if (displayMode == MENU) {
-    MenuMode();
+  if (displayMode == SETUP) {
+    SetupMenuMode();
   } 
   else if (displayMode == POURING) {
     if (tftClearNeeded == true) {
@@ -146,7 +146,7 @@ void loop() {
       GetTemperature();
       checkTempDelay = millis();
     } 
-    CheckMenuMode();    
+    CheckSetupMode();    
     CheckPIRSensor();
     //GetTappedDaysAgo();
     //GetInfraredSensor();
@@ -156,7 +156,7 @@ void loop() {
 // 18px char to char
 void ResetNormalDisplay() {
   displayMode = NORMAL;
-  mainMenuChoice = 0;
+  setupMenuChoice = 0;
   tft.fillScreen(BLACK);
   DrawBeerName();
   DrawBeersRemaining();
@@ -167,14 +167,15 @@ void ResetNormalDisplay() {
 
 void DrawBeerName() {
   tft.setTextSize(3);
-  tft.setCursor(10, 20);
+  tft.setCursor(20, 20);
   tft.setTextColor(LIGHTGREEN, BLACK);
   tft.print(beerName);
+  tft.drawFastHLine(20, 60, 420, GRAY);
 }
 
 void DrawBeersRemaining() {
   tft.setTextSize(3);
-  tft.setCursor(10, 80);
+  tft.setCursor(20, 80);
   tft.setTextColor(GRAY, BLACK);
   tft.print("Beers remaining:");  
   tft.setCursor(324, 80);
@@ -184,19 +185,19 @@ void DrawBeersRemaining() {
 
 void DrawTemp() {
   tft.setTextSize(3);
-  tft.setCursor(10, 140);
+  tft.setCursor(20, 140);
   tft.setTextColor(GRAY, BLACK);
   tft.print("Temp:");
   tft.setCursor(126, 140);
   tft.setTextColor(WHITE, BLACK);
   tft.print(currentTemp);
-  tft.setCursor(162, 140);
+  tft.setCursor(167, 140);
   tft.print("F");
 }
 
 void DrawTappedDays() {
   tft.setTextSize(3);
-  tft.setCursor(10, 200);
+  tft.setCursor(20, 200);
   tft.setTextColor(GRAY, BLACK);
   tft.print("Tapped:");
   tft.setCursor(162, 200);
@@ -223,17 +224,17 @@ void DrawTappedDays() {
 
 void DrawKegWeight() {
   tft.setTextSize(3);
-  tft.setCursor(10, 260);
+  tft.setCursor(20, 260);
   tft.setTextColor(GRAY, BLACK);
   tft.print("Keg weight:");  
-  tft.setCursor(216, 260);
+  tft.setCursor(236, 260);
   tft.setTextColor(WHITE, BLACK);
   tft.print("41.14");
 }
 
-void MenuMode() {
-  DisplayMainMenu();
-  MainMenuInput();
+void SetupMenuMode() {
+  DisplaySetupMenu();
+  SetupMenuInput();
   if (digitalRead(ROTARYBUTTON) == LOW) {
     if ((millis() - rotaryButtonDelay) > 500) {
       rotaryButtonDelay = millis();
@@ -242,33 +243,32 @@ void MenuMode() {
   }  
 }
 
-void DisplayMainMenu() {
+void DisplaySetupMenu() {
   for (int x=0; x < NUMMENUITEMS; x++) {
-    DrawMainMenuChoices(x, mainMenuChoice);  
+    DrawSetupMenuChoices(x, setupMenuChoice);  
   }
 }
 
-void DrawMainMenuChoices(int currentItem, int menuChoice) {
+void DrawSetupMenuChoices(int currentItem, int menuChoice) {
   tft.setTextSize(3);
   if (currentItem == menuChoice) {
-    tft.setTextColor(LIGHTGREEN);    
+    tft.setTextColor(LIGHTGREEN);
+    tft.fillTriangle(20, 20+(currentItem * 50), 28, 29+(currentItem * 50), 20, 38+(currentItem * 50), LIGHTGREEN); 
   } else {
     tft.setTextColor(WHITE);
+    tft.fillTriangle(20, 20+(currentItem * 50), 28, 29+(currentItem * 50), 20, 38+(currentItem * 50), BLACK); 
   }
-  tft.setCursor(10, (20+(currentItem * 50)));
-  tft.print(currentItem+1);     
-  tft.setCursor(22, (20+(currentItem * 50)));
-  tft.print(". ");     
   tft.setCursor(46, (20+(currentItem * 50)));
-  tft.print(mainMenuChoices[currentItem]);
+  tft.print(setupMenuChoices[currentItem]);
 }
 
-void MainMenuInput() {
+void SetupMenuInput() {
   if ((digitalRead(BUTTON1) == HIGH) || (digitalRead(BUTTON2) == HIGH)) {
     if ((millis() - buttonDelay) > 500) {
       buttonDelay = millis();
-      switch(mainMenuChoice) {
+      switch(setupMenuChoice) {
         case 0 :
+          tft.fillScreen(BLACK);
           EditBeerName();
           break;
         case 1 :
@@ -281,15 +281,15 @@ void MainMenuInput() {
     }
   } else if (updateRotaryLeft == true) {
       updateRotaryLeft = false;
-      mainMenuChoice--;
-      if (mainMenuChoice < 0) {
-        mainMenuChoice = NUMMENUITEMS-1;
+      setupMenuChoice--;
+      if (setupMenuChoice < 0) {
+        setupMenuChoice = NUMMENUITEMS-1;
       }
   } else if (updateRotaryRight == true) {
       updateRotaryRight = false;
-      mainMenuChoice++;
-      if (mainMenuChoice > NUMMENUITEMS-1) {
-        mainMenuChoice = 0;
+      setupMenuChoice++;
+      if (setupMenuChoice > NUMMENUITEMS-1) {
+        setupMenuChoice = 0;
       }
   }    
 }
@@ -367,11 +367,11 @@ void FadeLEDs(bool OnOff) {
   }
 }
 
-void CheckMenuMode() { //menu entry mode
+void CheckSetupMode() { // setup menu entry mode
   if (digitalRead(ROTARYBUTTON) == LOW) {
     if ((millis() - rotaryButtonDelay) > 500) {
       rotaryButtonDelay = millis();
-      displayMode = MENU;
+      displayMode = SETUP;
       tft.fillScreen(BLACK);
       updateRotaryLeft = false;
       updateRotaryRight = false;    }
@@ -379,6 +379,65 @@ void CheckMenuMode() { //menu entry mode
 }
 
 void EditBeerName() {
+  bool doneEditing = false;
+  bool editChar = false;
+  tft.setTextSize(3);
+  tft.setTextColor(WHITE);
+  tft.setCursor(20, 20);
+  tft.print(beerName);
+  cursorPosition = 1;
+  while (!doneEditing) {
+    if (editChar == true) {
+      tft.fillRect(18*cursorPosition, 16, 20, 29, DARKRED);
+    } else {
+      tft.drawRect(18*cursorPosition, 16, 20, 29, LIGHTGRAY);
+    }
+    tft.setCursor(20, 20);
+    tft.print(beerName);
+    if (digitalRead(BUTTON1) == HIGH) {
+      buttonDelay = millis();
+      tft.fillScreen(BLACK);
+      doneEditing = true;
+    } else if (digitalRead(BUTTON2) == HIGH) {
+      if ((millis() - buttonDelay) > 500) {
+        buttonDelay = millis();
+        if (editChar == true) {
+          tft.fillRect(18*cursorPosition, 16, 20, 29, BLACK);
+        }
+        editChar = !editChar;
+      }
+    } else if (updateRotaryLeft == true) {
+        updateRotaryLeft = false;
+        if (editChar == true) {
+          alphabetCursorPosition -= 1;
+          if (alphabetCursorPosition < 0) {
+            alphabetCursorPosition = 55;
+          }          
+          beerName[cursorPosition-1] = char(alphabet[alphabetCursorPosition]);
+        } else {
+          tft.drawRect(18*cursorPosition, 16, 20, 29, BLACK);
+          cursorPosition--;
+          if (cursorPosition < 1) {
+            cursorPosition = 24;
+          }
+        }
+    } else if (updateRotaryRight == true) {
+        updateRotaryRight = false;
+        if (editChar == true) {
+          alphabetCursorPosition += 1;
+          if (alphabetCursorPosition > 55) {
+            alphabetCursorPosition = 0;
+          }          
+          beerName[cursorPosition-1] = char(alphabet[alphabetCursorPosition]);
+        } else {
+          tft.drawRect(18*cursorPosition, 16, 20, 29, BLACK);
+          cursorPosition++;
+          if (cursorPosition > 24) {
+            cursorPosition = 1;
+          }
+        }
+    }    
+  }
 /*
   lcd.setCursor(cursorPosition,0);
   rotaryCurrentTime = millis();
