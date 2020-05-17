@@ -12,18 +12,19 @@ volatile byte rotaryReading = 0; //somewhere to store the direct values we read 
 volatile boolean updateRotaryLeft = false;
 volatile boolean updateRotaryRight = false;
 
-#define TEMP 3        // temp sensor pin
+// pin 5 seems flakey on this particular Mega, don't use it
+#define TEMP 48        // temp sensor pin
 #define DHTTYPE DHT22 // temp sensor type DHT 22  (AM2302), AM2321
 #define TFTBACKLIGHT 13  // TFT LED backlight
 #define PIR 7         // PIR infrared sensor
-#define FLOWSENSOR 24 // flow meter
-#define BUTTON1 5     // lighted button
+#define FLOWSENSOR 46 // flow meter
+#define BUTTON1 2     // lighted button
 #define BUTTON1LED 11
 #define BUTTON2 6     // lighted button
 #define BUTTON2LED 12
 #define ROTARYBUTTON 4      // rotary pushbutton
-#define SCALECLK 14  // load sensor based scale
-#define SCALEDOUT 15
+#define SCALECLK A14  // load sensor based scale
+#define SCALEDOUT A15
 #define BACKLIGHTDURATION 60  // time to leave backlight on once triggered
 #define TFT_CS 10
 #define TFT_DC 9
@@ -75,7 +76,8 @@ float beersRemaining = 40.8;
 volatile int luckyBeer = 0;
 volatile boolean luckyBeerFound = false;
 volatile float currentPour = 0.0;
-unsigned long buttonDelay = 0;
+unsigned long buttonTimer = 0;
+int  buttonDelay = 200;
 volatile char displayMode = NORMAL;
 volatile unsigned long pouringModeDuration = 0;
 int cursorPosition = 0;
@@ -132,11 +134,6 @@ void loop() {
     SetupMenuMode();
   } 
   else if (displayMode == POURING) {
-    if (tftClearNeeded == true) {
-      //lcd.clear();
-      //delay(20);
-      //tftClearNeeded = false;
-    }
     DisplayPouringMode();
   }
   else {
@@ -255,8 +252,8 @@ void DrawSetupMenuChoices(int currentItem, int menuChoice) {
 
 void SetupMenuInput() {
   if (digitalRead(BUTTON2) == HIGH) {
-    if ((millis() - buttonDelay) > 500) {
-      buttonDelay = millis();
+    if ((millis() - buttonTimer) > buttonDelay) {
+      buttonTimer = millis();
       switch(setupMenuChoice) {
         case 0 :
           tft.fillScreen(BLACK);
@@ -266,9 +263,11 @@ void SetupMenuInput() {
           ResetNewKeg();          
           break;
         case 2 :
+          tft.fillScreen(BLACK);
           CalibrateScale();
           break;
         case 3 :
+          tft.fillScreen(BLACK);
           ZeroScale();
           break;
       }
@@ -286,8 +285,8 @@ void SetupMenuInput() {
         setupMenuChoice = 0;
       }
   } else if ((digitalRead(BUTTON1) == HIGH) || (digitalRead(ROTARYBUTTON) == LOW)) {
-    if ((millis() - buttonDelay) > 500) {
-      buttonDelay = millis();
+    if ((millis() - buttonTimer) > buttonDelay) {
+      buttonTimer = millis();
       ResetNormalDisplay();
     }
   }      
@@ -365,8 +364,8 @@ void FadeLEDs(bool OnOff) {
 
 void CheckSetupMode() { // setup menu entry mode
   if (digitalRead(ROTARYBUTTON) == LOW) {
-    if ((millis() - buttonDelay) > 500) {
-      buttonDelay = millis();
+    if ((millis() - buttonTimer) > buttonDelay) {
+      buttonTimer = millis();
       displayMode = SETUP;
       tft.fillScreen(BLACK);
       updateRotaryLeft = false;
@@ -406,8 +405,8 @@ void EditBeerName() {
       tft.print(tmpbeerName);          
     }
     if ((digitalRead(BUTTON1) == HIGH) || (digitalRead(ROTARYBUTTON) == LOW)) {
-      if ((millis() - buttonDelay) > 500) {
-        buttonDelay = millis();
+      if ((millis() - buttonTimer) > buttonDelay) {
+        buttonTimer = millis();
         if (editChar == false) { // save name and exit
           EEPROM.put(0, beerName);
           tft.fillScreen(BLACK);
@@ -419,8 +418,8 @@ void EditBeerName() {
         }
       }
     } else if (digitalRead(BUTTON2) == HIGH) {
-      if ((millis() - buttonDelay) > 500) {
-        buttonDelay = millis();
+      if ((millis() - buttonTimer) > buttonDelay) {
+        buttonTimer = millis();
         if (editChar == false) { // enter char edit mode
           strncpy(tmpbeerName, beerName, 25);
           alphabetCursorPosition = -1;
@@ -465,7 +464,49 @@ void EditBeerName() {
 }
 
 void CalibrateScale() {
-  
+  bool doneEditing = false;
+  tft.setTextSize(2);
+  tft.setTextColor(GRAY);
+  tft.setCursor(20, 160);
+  tft.print("Place known weight on scale");
+  tft.setCursor(20, 200);
+  tft.print("Right button: save calibration");
+  tft.setCursor(20, 240);
+  tft.print("Left button:  cancel");
+  tft.setCursor(20, 280);
+  tft.print("Rotary dial:  calibrate");
+  while (!doneEditing) {
+    tft.setTextSize(3);
+    tft.setTextColor(GRAY, BLACK);
+    tft.setCursor(20, 20);
+    tft.print("Weight:");
+    tft.setCursor(162, 20);
+    tft.setTextColor(WHITE, BLACK);
+    tft.print("42.3");
+    tft.setCursor(244, 20);
+    tft.print("lbs");
+    tft.setTextColor(GRAY, BLACK);
+    tft.setCursor(20, 70);
+    tft.print("Calibration:");
+    tft.setCursor(252, 70);
+    tft.setTextColor(WHITE, BLACK);
+    tft.print("7500");
+    if ((digitalRead(BUTTON1) == HIGH) || (digitalRead(ROTARYBUTTON) == LOW)) {
+      if ((millis() - buttonTimer) > buttonDelay) {
+        buttonTimer = millis();
+        tft.fillScreen(BLACK);
+        doneEditing = true;
+      }
+    } else if (digitalRead(BUTTON2) == HIGH) {
+      if ((millis() - buttonTimer) > buttonDelay) {
+        buttonTimer = millis();
+      }
+    } else if (updateRotaryLeft == true) {
+      updateRotaryLeft = false;
+    } else if (updateRotaryRight == true) {
+      updateRotaryRight = false;
+    }    
+  }
 }
 
 void ZeroScale() {
