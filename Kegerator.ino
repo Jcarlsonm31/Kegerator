@@ -1,8 +1,9 @@
-#include <DHT.h>
+#include <DHT.h> // temp
 #include <EEPROM.h>
 #include <SPI.h>
 #include "Adafruit_GFX.h"
 #include "Adafruit_HX8357.h"
+#include "HX711.h" // scale
 
 #define ROTARYA 18 // rotary knob A
 #define ROTARYB 19 // rotary knob B
@@ -25,6 +26,7 @@ volatile boolean updateRotaryRight = false;
 #define ROTARYBUTTON 4      // rotary pushbutton
 #define SCALECLK A14  // load sensor based scale
 #define SCALEDOUT A15
+HX711 scale;
 #define BACKLIGHTDURATION 60  // time to leave backlight on once triggered
 #define TFT_CS 10
 #define TFT_DC 9
@@ -90,6 +92,9 @@ volatile uint16_t prevpulses = 0;
 volatile uint8_t lastflowpinstate; // track the state of the pulse pin
 volatile uint32_t lastflowratetimer = 0; // you can try to keep time of how long it is between pulses
 volatile float flowrate; // and use that to calculate a flow rate
+float scaleCalibrationFactor = -11030; // calibration offset against a known weight
+long scaleZeroFactor = 96000; // offset weight of scale and empty keg
+float emptyKegWeight = 0.0;
 DHT dht(TEMP, DHTTYPE);
 
 void setup() {
@@ -123,9 +128,14 @@ void setup() {
   luckyBeerFound = false;
   tappedDuration = millis();
   dht.begin();
+  scale.begin(SCALEDOUT, SCALECLK);
   EEPROM.get(0, beerName);
   EEPROM.get(26, tappedDays);
-  EEPROM.get(30, beersRemaining);
+  EEPROM.get(30, scaleCalibrationFactor);
+  EEPROM.get(35, scaleZeroFactor);
+  EEPROM.get(40, emptyKegWeight);
+  scale.set_scale(scaleCalibrationFactor); //This value is obtained by using the SparkFun_HX711_Calibration sketch
+  scale.set_offset(scaleZeroFactor); //Zero out the scale using a previously known zero_factor
   ResetNormalDisplay();
 }
 
@@ -465,10 +475,14 @@ void EditBeerName() {
 
 void CalibrateScale() {
   bool doneEditing = false;
+  float tmpCalibrationFactor = scaleCalibrationFactor;
+  scaleZeroFactor = scale.read_average(); //Get a baseline zero reading with no weight
+  EEPROM.put(35, scaleZeroFactor); //Store baseline reading
+  scale.set_offset(scaleZeroFactor); //Zero out the scale using a previously known zero_factor
   tft.setTextSize(2);
   tft.setTextColor(GRAY);
   tft.setCursor(20, 160);
-  tft.print("Place known weight on scale");
+  tft.print("Wait then place known weight on scale");
   tft.setCursor(20, 200);
   tft.print("Right button: save calibration");
   tft.setCursor(20, 240);
@@ -476,13 +490,14 @@ void CalibrateScale() {
   tft.setCursor(20, 280);
   tft.print("Rotary dial:  calibrate");
   while (!doneEditing) {
+    scale.set_scale(tmpCalibrationFactor); //Adjust to this calibration factor
     tft.setTextSize(3);
     tft.setTextColor(GRAY, BLACK);
     tft.setCursor(20, 20);
     tft.print("Weight:");
     tft.setCursor(162, 20);
     tft.setTextColor(WHITE, BLACK);
-    tft.print("42.3");
+    tft.print(scale.get_units(), 1);
     tft.setCursor(244, 20);
     tft.print("lbs");
     tft.setTextColor(GRAY, BLACK);
@@ -490,7 +505,7 @@ void CalibrateScale() {
     tft.print("Calibration:");
     tft.setCursor(252, 70);
     tft.setTextColor(WHITE, BLACK);
-    tft.print("7500");
+    tft.print(int(tmpCalibrationFactor));
     if ((digitalRead(BUTTON1) == HIGH) || (digitalRead(ROTARYBUTTON) == LOW)) {
       if ((millis() - buttonTimer) > buttonDelay) {
         buttonTimer = millis();
@@ -499,11 +514,18 @@ void CalibrateScale() {
       }
     } else if (digitalRead(BUTTON2) == HIGH) {
       if ((millis() - buttonTimer) > buttonDelay) {
+        scaleCalibrationFactor = tmpCalibrationFactor;
+        EEPROM.put(30, scaleCalibrationFactor);
+        scale.set_scale(scaleCalibrationFactor);
         buttonTimer = millis();
+        tft.fillScreen(BLACK);
+        doneEditing = true;
       }
     } else if (updateRotaryLeft == true) {
+      tmpCalibrationFactor += 10;
       updateRotaryLeft = false;
     } else if (updateRotaryRight == true) {
+      tmpCalibrationFactor -= 10;
       updateRotaryRight = false;
     }    
   }
