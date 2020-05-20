@@ -60,8 +60,8 @@ Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, TFT_RST);
 #define RIGHT 1
 #define LEFT 2
 
-#define NUMMENUITEMS 4
-char setupMenuChoices[NUMMENUITEMS][20] = { "Beer Name", "Reset Keg", "Calibrate Scale", "Zero Scale" };
+#define NUMMENUITEMS 5
+char setupMenuChoices[NUMMENUITEMS][22] = { "Beer Name", "Reset Keg", "Calibrate Scale", "Zero Scale", "Calibrate Flowmeter" };
 char setupMenuChoice = 0;
 char alphabet[83] = "aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ0123456789-!?$%&*',.[]()<>/=+ ";
 char beerName[25] = "STREET DOG IPA          "; // max 24 char beer name
@@ -74,7 +74,7 @@ unsigned long checkTempDelay = 0;
 volatile unsigned long updatePouringDelay = 0;
 int currentTemp = 0;
 int prevTemp = 0;
-float beersRemaining = 40.8;
+float beersRemaining = 0.0;
 volatile int luckyBeer = 0;
 volatile boolean luckyBeerFound = false;
 volatile float currentPour = 0.0;
@@ -84,7 +84,6 @@ volatile char displayMode = NORMAL;
 volatile unsigned long pouringModeDuration = 0;
 int cursorPosition = 0;
 int alphabetCursorPosition = -1;
-volatile boolean tftUpdateNeeded = true;
 volatile boolean tftClearNeeded = false;
 // use volatile because of intterupt usage
 volatile uint16_t pulses = 0;
@@ -92,9 +91,11 @@ volatile uint16_t prevpulses = 0;
 volatile uint8_t lastflowpinstate; // track the state of the pulse pin
 volatile uint32_t lastflowratetimer = 0; // you can try to keep time of how long it is between pulses
 volatile float flowrate; // and use that to calculate a flow rate
+float flowmeterPulsesPerSecond = 8.8;
 float scaleCalibrationFactor = -11030; // calibration offset against a known weight
-long scaleZeroFactor = 96000; // offset weight of scale and empty keg
-float emptyKegWeight = 0.0;
+long scaleZeroFactor = 96000; // offset weight of empty scale to zero scale
+float emptyKegWeight = 0.0; // used to offset full keg weight
+float currentKegWeight = 0.0;
 DHT dht(TEMP, DHTTYPE);
 
 void setup() {
@@ -134,6 +135,7 @@ void setup() {
   EEPROM.get(30, scaleCalibrationFactor);
   EEPROM.get(35, scaleZeroFactor);
   EEPROM.get(40, emptyKegWeight);
+  EEPROM.get(45, flowmeterPulsesPerSecond);
   scale.set_scale(scaleCalibrationFactor); //This value is obtained by using the SparkFun_HX711_Calibration sketch
   scale.set_offset(scaleZeroFactor); //Zero out the scale using a previously known zero_factor
   ResetNormalDisplay();
@@ -151,13 +153,13 @@ void loop() {
       GetTemperature();
       checkTempDelay = millis();
     } 
-    CheckSetupMode();    
     CheckPIRSensor();
     GetTappedDays();
+    GetBeersRemaining();
+    CheckSetupMode();    
   }
 }
 
-// 18px char to char
 void ResetNormalDisplay() {
   displayMode = NORMAL;
   setupMenuChoice = 0;
@@ -170,7 +172,7 @@ void ResetNormalDisplay() {
 }
 
 void DrawBeerName() {
-  tft.setTextSize(3);
+  tft.setTextSize(3); // 18px char to char width
   tft.setCursor(20, 20);
   tft.setTextColor(LIGHTGREEN, BLACK);
   tft.print(beerName);
@@ -233,7 +235,7 @@ void DrawKegWeight() {
   tft.print("Keg weight:");  
   tft.setCursor(236, 260);
   tft.setTextColor(WHITE, BLACK);
-  tft.print("41.14");
+  tft.print(currentKegWeight, 1);
 }
 
 void SetupMenuMode() {
@@ -279,6 +281,10 @@ void SetupMenuInput() {
         case 3 :
           tft.fillScreen(BLACK);
           ZeroScale();
+          break;
+        case 4 :
+          tft.fillScreen(BLACK);
+          CalibrateFlowmeter();
           break;
       }
     }
@@ -504,7 +510,7 @@ void CalibrateScale() {
     tft.setCursor(20, 70);
     tft.print("Calibration:");
     tft.setCursor(252, 70);
-    tft.setTextColor(WHITE, BLACK);
+    tft.setTextColor(LIGHTGREEN, BLACK);
     tft.print(int(tmpCalibrationFactor));
     if ((digitalRead(BUTTON1) == HIGH) || (digitalRead(ROTARYBUTTON) == LOW)) {
       if ((millis() - buttonTimer) > buttonDelay) {
@@ -532,7 +538,103 @@ void CalibrateScale() {
 }
 
 void ZeroScale() {
-  
+  bool doneEditing = false;
+  float tmpEmptyKegWeight = emptyKegWeight;
+  scale.tare(); // zero scale
+  tft.setTextSize(2);
+  tft.setTextColor(GRAY);
+  tft.setCursor(20, 200);
+  tft.print("Wait then place empty keg on scale");
+  tft.setCursor(20, 240);
+  tft.print("Right button: save weight");
+  tft.setCursor(20, 280);
+  tft.print("Left button:  cancel");
+  while (!doneEditing) {
+    tmpEmptyKegWeight = scale.get_units();
+    tft.setTextSize(3);
+    tft.setTextColor(GRAY, BLACK);
+    tft.setCursor(20, 20);
+    tft.print("Previous:");
+    tft.setCursor(198, 20);
+    tft.setTextColor(WHITE, BLACK);
+    tft.print(emptyKegWeight, 1);
+    tft.setCursor(280, 20);
+    tft.print("lbs");
+    tft.setTextColor(GRAY, BLACK);
+    tft.setCursor(20, 70);
+    tft.print("Empty Keg:");
+    tft.setCursor(216, 70);
+    tft.setTextColor(LIGHTGREEN, BLACK);
+    tft.print(tmpEmptyKegWeight, 1);
+    tft.setTextColor(WHITE, BLACK);
+    tft.setCursor(298, 70);
+    tft.print("lbs");
+    if ((digitalRead(BUTTON1) == HIGH) || (digitalRead(ROTARYBUTTON) == LOW)) {
+      if ((millis() - buttonTimer) > buttonDelay) {
+        buttonTimer = millis();
+        tft.fillScreen(BLACK);
+        doneEditing = true;
+      }
+    } else if (digitalRead(BUTTON2) == HIGH) {
+      if ((millis() - buttonTimer) > buttonDelay) {
+        emptyKegWeight = tmpEmptyKegWeight;
+        EEPROM.put(40, emptyKegWeight);
+        buttonTimer = millis();
+        tft.fillScreen(BLACK);
+        doneEditing = true;
+      }
+    }    
+  }  
+}
+
+void CalibrateFlowmeter() { // Modify pulses/sec up to decrease flow reading, down to increase reading (8.8 to start)
+  bool doneEditing = false;
+  float tmpFlowmeterPulsesPerSecond = flowmeterPulsesPerSecond;
+  tft.setTextSize(2);
+  tft.setTextColor(GRAY);
+  tft.setCursor(20, 160);
+  tft.print("Increase value to decrease pour rate");
+  tft.setCursor(20, 200);
+  tft.print("Right button: save calibration");
+  tft.setCursor(20, 240);
+  tft.print("Left button:  cancel");
+  tft.setCursor(20, 280);
+  tft.print("Rotary dial:  calibrate");
+  while (!doneEditing) {
+    tft.setTextSize(3);
+    tft.setTextColor(GRAY, BLACK);
+    tft.setCursor(20, 20);
+    tft.print("Current:");
+    tft.setCursor(180, 20);
+    tft.setTextColor(WHITE, BLACK);
+    tft.print(flowmeterPulsesPerSecond, 1);
+    tft.setTextColor(GRAY, BLACK);
+    tft.setCursor(20, 70);    tft.print("Calibration:");
+    tft.setCursor(252, 70);
+    tft.setTextColor(LIGHTGREEN, BLACK);
+    tft.print(tmpFlowmeterPulsesPerSecond, 1);
+    if ((digitalRead(BUTTON1) == HIGH) || (digitalRead(ROTARYBUTTON) == LOW)) {
+      if ((millis() - buttonTimer) > buttonDelay) {
+        buttonTimer = millis();
+        tft.fillScreen(BLACK);
+        doneEditing = true;
+      }
+    } else if (digitalRead(BUTTON2) == HIGH) {
+      if ((millis() - buttonTimer) > buttonDelay) {
+        flowmeterPulsesPerSecond = tmpFlowmeterPulsesPerSecond;
+        EEPROM.put(45, flowmeterPulsesPerSecond);
+        buttonTimer = millis();
+        tft.fillScreen(BLACK);
+        doneEditing = true;
+      }
+    } else if (updateRotaryLeft == true) {
+      tmpFlowmeterPulsesPerSecond -= 0.1;
+      updateRotaryLeft = false;
+    } else if (updateRotaryRight == true) {
+      tmpFlowmeterPulsesPerSecond += 0.1;
+      updateRotaryRight = false;
+    }    
+  }  
 }
 
 void ResetNewKeg() {
@@ -549,6 +651,10 @@ void ResetNewKeg() {
 
 void DisplayPouringMode() {
 /*
+  if (tftClearNeeded == true) {
+    tft.fillScreen(BLACK);
+    tftClearNeeded = false;
+  }
   if ((millis() - updatePouringDelay) > 100) {
     updatePouringDelay = millis();
     if (luckyBeer == int(beersRemaining)) {
@@ -570,19 +676,14 @@ void DisplayPouringMode() {
 }
 
 void GetBeersRemaining() {
-  if (prevpulses != pulses) {
-    volatile float liters = pulses - prevpulses;
-    liters /= 7.5;
-    liters /= 60.0;
-    liters /= .473176; // convert to 16 ounce beers
-    liters *= .66; // fudge factor to account for too high reading when pouring
-    beersRemaining -= liters;
-    if (beersRemaining < 0.0) {
-      beersRemaining = 0.0;
-    }
-    prevpulses = pulses;
-    EEPROM.put(30, beersRemaining);
+  float zeroedWeight;
+  currentKegWeight = scale.get_units(); //Get a baseline zero reading with no weight
+  zeroedWeight = currentKegWeight - emptyKegWeight;
+  if (zeroedWeight < 0.0) {
+    zeroedWeight = 0.0;
   }
+  DrawBeersRemaining();
+  DrawKegWeight();
 }
 
 // Handle rotary encoder interrupts
@@ -615,7 +716,8 @@ SIGNAL(TIMER0_COMPA_vect) {
   uint8_t x = digitalRead(FLOWSENSOR);  
   if (x == lastflowpinstate) {
     lastflowratetimer++;
-    if ((displayMode == POURING) && ((millis() - pouringModeDuration) > 3000)) { // haven't poured for 5 seconds
+    if ((displayMode == POURING) && ((millis() - pouringModeDuration) > 3000)) { // haven't poured for 3 seconds
+      prevpulses = pulses;
       displayMode = NORMAL;
       currentPour = 0.0;
       updatePouringDelay = 0;
@@ -623,12 +725,11 @@ SIGNAL(TIMER0_COMPA_vect) {
         luckyBeer = 100;      
       }
       GetBeersRemaining();
-      tftUpdateNeeded = true;
+      ResetNormalDisplay();
     }
     return; // nothing changed!
   }
-  if (x == HIGH) {
-    //low to high transition!
+  if (x == HIGH) { //low to high transition!
     pulses++;
     if (displayMode != POURING) {
       displayMode = POURING;
@@ -636,7 +737,7 @@ SIGNAL(TIMER0_COMPA_vect) {
     }
     pouringModeDuration = millis();
     currentPour = pulses - prevpulses;
-    currentPour /= 7.5;
+    currentPour /= 7.5;  //Increase 7.5 for lower output pour reading, decrease for higher output reading. (try 8.8 to start) 
     currentPour /= 60.0;
     currentPour /= .0295735; // convert to 16 ounce beers
     currentPour *= .85; // fudge factor to account for too high reading when pouring
