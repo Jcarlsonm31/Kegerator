@@ -75,8 +75,8 @@ volatile unsigned long updatePouringDelay = 0;
 int currentTemp = 0;
 int prevTemp = 0;
 float beersRemaining = 0.0;
-volatile int luckyBeer = 0;
-volatile boolean luckyBeerFound = false;
+long luckyBeer = 0;
+boolean luckyBeerFound = false;
 volatile float currentPour = 0.0;
 unsigned long buttonTimer = 0;
 int  buttonDelay = 200;
@@ -84,7 +84,9 @@ volatile char displayMode = NORMAL;
 volatile unsigned long pouringModeDuration = 0;
 int cursorPosition = 0;
 int alphabetCursorPosition = -1;
-volatile boolean tftClearNeeded = false;
+boolean tftFillToggle = false; // flip between black/white to fill screen while backlight off to prevent burn in
+volatile boolean clearPouringMode = false;
+volatile boolean tftResetNeeded = false;
 // use volatile because of intterupt usage
 volatile uint16_t pulses = 0;
 volatile uint16_t prevpulses = 0;
@@ -142,7 +144,11 @@ void setup() {
 }
 
 void loop() {
-  if (displayMode == SETUP) {
+  if (tftResetNeeded == true) {
+    tftResetNeeded = false;
+    ResetNormalDisplay();
+  }
+  else if (displayMode == SETUP) {
     SetupMenuMode();
   } 
   else if (displayMode == POURING) {
@@ -186,7 +192,7 @@ void DrawBeersRemaining() {
   tft.print("Beers remaining:");  
   tft.setCursor(324, 80);
   tft.setTextColor(WHITE, BLACK);
-  tft.print(int (beersRemaining));
+  tft.print(beersRemaining, 1);
 }
 
 void DrawTemp() {
@@ -350,13 +356,14 @@ void FadeLEDs(bool OnOff) {
   int TFTBrightness = 0;
   int TFTFadeAmount = 5;
   if (OnOff == true) { // fade on
+    ResetNormalDisplay();
     for (int x=0; x<51; x++) {
       LEDBrightness = LEDBrightness + LEDFadeAmount;
       TFTBrightness = TFTBrightness + TFTFadeAmount;
       analogWrite(BUTTON1LED, LEDBrightness);
       analogWrite(BUTTON2LED, LEDBrightness);
       analogWrite(TFTBACKLIGHT, TFTBrightness);
-      delay(30);
+      delay(20);
     }
     analogWrite(BUTTON1LED, 55);
     analogWrite(BUTTON2LED, 55);
@@ -374,6 +381,13 @@ void FadeLEDs(bool OnOff) {
     }
     digitalWrite(BUTTON1LED, LOW);
     digitalWrite(BUTTON2LED, LOW);
+    if (tftFillToggle == false) {
+      tft.fillScreen(WHITE);      
+      tftFillToggle = true;
+    } else {
+      tft.fillScreen(BLACK);
+      tftFillToggle = false;
+    }
     digitalWrite(TFTBACKLIGHT, LOW);
   }
 }
@@ -650,29 +664,33 @@ void ResetNewKeg() {
 }
 
 void DisplayPouringMode() {
-/*
-  if (tftClearNeeded == true) {
+  if (clearPouringMode == true) {
     tft.fillScreen(BLACK);
-    tftClearNeeded = false;
+    clearPouringMode = false;
+    tft.setTextSize(4);
+    if ((luckyBeer == long(beersRemaining)) && (luckyBeerFound == false)) {
+      tft.setCursor(75, 40);
+      tft.setTextColor(LIGHTGREEN, BLACK);
+      tft.print("You found the");  
+      tft.setCursor(75, 100);
+      tft.print("LUCKY BEER!!!");
+      luckyBeerFound = true;
+    } else {
+      tft.setCursor(115, 80);
+      tft.setTextColor(WHITE, BLACK);
+      tft.print("Pouring...");  
+    }
   }
   if ((millis() - updatePouringDelay) > 100) {
     updatePouringDelay = millis();
-    if (luckyBeer == int(beersRemaining)) {
-      lcd.setCursor(0, 0);    
-      lcd.print("YOU GOT THE");
-      lcd.setCursor(0, 1);    
-      lcd.print("LUCKY BEER!!!");
-      luckyBeerFound = true;
-    } else {
-       lcd.setCursor(0, 0);
-       lcd.print("Pouring...");
+    tft.setTextSize(4);
+    tft.setCursor(185, 180);
+    tft.setTextColor(WHITE, BLACK);
+    if (displayMode == POURING) {
+      tft.print(int(floor(currentPour)));  
+      tft.print("oz");
     }
-    lcd.setCursor(0, 2);
-    lcd.print("Ounces:");
-    lcd.setCursor(8, 2);
-    lcd.print(int(floor(currentPour)));
   }
-*/
 }
 
 void GetBeersRemaining() {
@@ -682,6 +700,7 @@ void GetBeersRemaining() {
   if (zeroedWeight < 0.0) {
     zeroedWeight = 0.0;
   }
+  beersRemaining = (zeroedWeight / 1.043); // 1.043lbs per 16oz beer
   DrawBeersRemaining();
   DrawKegWeight();
 }
@@ -716,16 +735,12 @@ SIGNAL(TIMER0_COMPA_vect) {
   uint8_t x = digitalRead(FLOWSENSOR);  
   if (x == lastflowpinstate) {
     lastflowratetimer++;
-    if ((displayMode == POURING) && ((millis() - pouringModeDuration) > 3000)) { // haven't poured for 3 seconds
+    if ((displayMode == POURING) && ((millis() - pouringModeDuration) > 2000)) { // haven't poured for 2 seconds
       prevpulses = pulses;
-      displayMode = NORMAL;
       currentPour = 0.0;
       updatePouringDelay = 0;
-      if (luckyBeerFound == true) {
-        luckyBeer = 100;      
-      }
-      GetBeersRemaining();
-      ResetNormalDisplay();
+      displayMode = NORMAL;
+      tftResetNeeded = true;
     }
     return; // nothing changed!
   }
@@ -733,14 +748,13 @@ SIGNAL(TIMER0_COMPA_vect) {
     pulses++;
     if (displayMode != POURING) {
       displayMode = POURING;
-      tftClearNeeded = true;
+      clearPouringMode = true;
     }
     pouringModeDuration = millis();
     currentPour = pulses - prevpulses;
-    currentPour /= 7.5;  //Increase 7.5 for lower output pour reading, decrease for higher output reading. (try 8.8 to start) 
+    currentPour /= flowmeterPulsesPerSecond;  //Increase 7.5 for lower output pour reading, decrease for higher output reading. (try 8.8 to start) 
     currentPour /= 60.0;
     currentPour /= .0295735; // convert to 16 ounce beers
-    currentPour *= .85; // fudge factor to account for too high reading when pouring
   }
   lastflowpinstate = x;
   flowrate = 1000.0;
