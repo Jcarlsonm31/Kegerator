@@ -61,7 +61,7 @@ Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, TFT_RST);
 #define LEFT 2
 
 #define NUMMENUITEMS 5
-char setupMenuChoices[NUMMENUITEMS][22] = { "Beer Name", "Reset Keg", "Calibrate Scale", "Zero Scale", "Calibrate Flowmeter" };
+char setupMenuChoices[NUMMENUITEMS][22] = { "Beer Name", "Reset Keg", "Calibrate Scale", "Weigh Empty Keg", "Calibrate Flowmeter" };
 char setupMenuChoice = 0;
 char alphabet[83] = "aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ0123456789-!?$%&*',.[]()<>/=+ ";
 char beerName[25] = "STREET DOG IPA          "; // max 24 char beer name
@@ -99,7 +99,6 @@ long scaleZeroFactor = 96000; // offset weight of empty scale to zero scale
 float emptyKegWeight = 0.0; // used to offset full keg weight
 float currentKegWeight = 0.0;
 DHT dht(TEMP, DHTTYPE);
-
 void setup() {
   Serial.begin(9600);
   pinMode(ROTARYA, INPUT_PULLUP);
@@ -286,7 +285,7 @@ void SetupMenuInput() {
           break;
         case 3 :
           tft.fillScreen(BLACK);
-          ZeroScale();
+          WeighEmptyKeg();
           break;
         case 4 :
           tft.fillScreen(BLACK);
@@ -551,10 +550,12 @@ void CalibrateScale() {
   }
 }
 
-void ZeroScale() {
+void WeighEmptyKeg() {
   bool doneEditing = false;
   float tmpEmptyKegWeight = emptyKegWeight;
-  scale.tare(); // zero scale
+  scaleZeroFactor = scale.read_average(); //Get a baseline zero reading with no weight
+  EEPROM.put(35, scaleZeroFactor); //Store baseline reading
+  scale.set_offset(scaleZeroFactor); //Zero out the scale using a previously known zero_factor
   tft.setTextSize(2);
   tft.setTextColor(GRAY);
   tft.setCursor(20, 200);
