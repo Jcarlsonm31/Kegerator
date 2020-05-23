@@ -19,9 +19,9 @@ volatile boolean updateRotaryRight = false;
 #define TFTBACKLIGHT 13  // TFT LED backlight
 #define PIR 7         // PIR infrared sensor
 #define FLOWSENSOR 46 // flow meter
-#define BUTTON1 2     // lighted button
+#define BUTTON1 14     // lighted button
 #define BUTTON1LED 11
-#define BUTTON2 6     // lighted button
+#define BUTTON2 15     // lighted button
 #define BUTTON2LED 12
 #define ROTARYBUTTON 4      // rotary pushbutton
 #define SCALECLK A14  // load sensor based scale
