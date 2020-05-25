@@ -161,7 +161,7 @@ void loop() {
     CheckPIRSensor();
     GetTappedDays();
     GetBeersRemaining();
-    CheckSetupMode();    
+    CheckSetupMode();   
   }
 }
 
@@ -178,7 +178,7 @@ void ResetNormalDisplay() {
 
 void DrawBeerName() {
   tft.setTextSize(3); // 18px char to char width
-  tft.setCursor(20, 20);
+  tft.setCursor(CenterText(beerName), 20);
   tft.setTextColor(LIGHTGREEN, BLACK);
   tft.print(beerName);
   tft.drawFastHLine(20, 60, 420, GRAY);
@@ -505,9 +505,9 @@ void CalibrateScale() {
   tft.setCursor(20, 200);
   tft.print("Right button: save calibration");
   tft.setCursor(20, 240);
-  tft.print("Left button:  cancel");
+  tft.print("Left button: set to default -11030");
   tft.setCursor(20, 280);
-  tft.print("Rotary dial:  calibrate");
+  tft.print("Rotary dial: calibrate/exit");
   while (!doneEditing) {
     scale.set_scale(tmpCalibrationFactor); //Adjust to this calibration factor
     tft.setTextSize(3);
@@ -521,15 +521,26 @@ void CalibrateScale() {
     tft.print("lbs");
     tft.setTextColor(GRAY, BLACK);
     tft.setCursor(20, 70);
+    tft.print("Current:");
+    tft.setCursor(180, 70);
+    tft.setTextColor(WHITE, BLACK);
+    tft.print(int(scaleCalibrationFactor));
+    tft.setTextColor(GRAY, BLACK);
+    tft.setCursor(20, 120);
     tft.print("Calibration:");
-    tft.setCursor(252, 70);
+    tft.setCursor(252, 120);
     tft.setTextColor(LIGHTGREEN, BLACK);
     tft.print(int(tmpCalibrationFactor));
-    if ((digitalRead(BUTTON1) == HIGH) || (digitalRead(ROTARYBUTTON) == LOW)) {
+    if (digitalRead(ROTARYBUTTON) == LOW) {
       if ((millis() - buttonTimer) > buttonDelay) {
         buttonTimer = millis();
         tft.fillScreen(BLACK);
         doneEditing = true;
+      }
+    } else if (digitalRead(BUTTON1) == HIGH) {
+      if ((millis() - buttonTimer) > buttonDelay) {
+        tmpCalibrationFactor = -11030;
+        buttonTimer = millis();
       }
     } else if (digitalRead(BUTTON2) == HIGH) {
       if ((millis() - buttonTimer) > buttonDelay) {
@@ -563,7 +574,7 @@ void WeighEmptyKeg() {
   tft.setCursor(20, 240);
   tft.print("Right button: save weight");
   tft.setCursor(20, 280);
-  tft.print("Left button:  cancel");
+  tft.print("Left button: cancel");
   while (!doneEditing) {
     tmpEmptyKegWeight = scale.get_units();
     tft.setTextSize(3);
@@ -612,9 +623,9 @@ void CalibrateFlowmeter() { // Modify pulses/sec up to decrease flow reading, do
   tft.setCursor(20, 200);
   tft.print("Right button: save calibration");
   tft.setCursor(20, 240);
-  tft.print("Left button:  cancel");
+  tft.print("Left button: cancel");
   tft.setCursor(20, 280);
-  tft.print("Rotary dial:  calibrate");
+  tft.print("Rotary dial: calibrate (default 8.8)");
   while (!doneEditing) {
     tft.setTextSize(3);
     tft.setTextColor(GRAY, BLACK);
@@ -704,6 +715,17 @@ void GetBeersRemaining() {
   beersRemaining = (zeroedWeight / 1.043); // 1.043lbs per 16oz beer
   DrawBeersRemaining();
   DrawKegWeight();
+}
+
+int CenterText(char *txtString) {
+  int txtLength = strlen(txtString);
+  for (int x = (txtLength-1); x>=0; x--) {
+    if (txtString[x] != ' ') {
+      txtLength = (x+2); // buffering by one extra char
+      x = -1;
+    }
+  }
+  return (240 - (txtLength*18)/2);
 }
 
 // Handle rotary encoder interrupts
