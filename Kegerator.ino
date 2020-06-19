@@ -24,8 +24,10 @@ volatile boolean updateRotaryRight = false;
 #define BUTTON2 15     // lighted button
 #define BUTTON2LED 12
 #define ROTARYBUTTON 4      // rotary pushbutton
-#define SCALECLK A14  // load sensor based scale
-#define SCALEDOUT A15
+#define SCALE1CLK A14  // 1st load sensor based scale
+#define SCALE1DOUT A15
+#define SCALE2CLK 25  // 2nd load sensor based scale
+#define SCALE2DOUT 24
 HX711 scale;
 #define BACKLIGHTDURATION 60  // time to leave backlight on once triggered
 #define TFT_CS 10
@@ -113,9 +115,9 @@ void setup() {
   analogWrite(BUTTON1LED, 55);
   pinMode(BUTTON2LED, OUTPUT);
   analogWrite(BUTTON2LED, 55);
-  pinMode(BUTTON1, INPUT);
+  pinMode(BUTTON1, INPUT_PULLUP);
   digitalWrite(BUTTON1, LOW);
-  pinMode(BUTTON2, INPUT);
+  pinMode(BUTTON2, INPUT_PULLUP);
   digitalWrite(BUTTON2, LOW);
   pinMode(PIR, INPUT);
   pinMode(FLOWSENSOR, INPUT);
@@ -130,7 +132,7 @@ void setup() {
   luckyBeerFound = false;
   tappedDuration = millis();
   dht.begin();
-  scale.begin(SCALEDOUT, SCALECLK);
+  scale.begin(SCALE1DOUT, SCALE1CLK);
   EEPROM.get(0, beerName);
   EEPROM.get(26, tappedDays);
   EEPROM.get(30, scaleCalibrationFactor);
@@ -268,7 +270,7 @@ void DrawSetupMenuChoices(int currentItem, int menuChoice) {
 }
 
 void SetupMenuInput() {
-  if (digitalRead(BUTTON2) == HIGH) {
+  if (digitalRead(BUTTON2) == LOW) {
     if ((millis() - buttonTimer) > buttonDelay) {
       buttonTimer = millis();
       switch(setupMenuChoice) {
@@ -305,7 +307,7 @@ void SetupMenuInput() {
       if (setupMenuChoice > NUMMENUITEMS-1) {
         setupMenuChoice = 0;
       }
-  } else if ((digitalRead(BUTTON1) == HIGH) || (digitalRead(ROTARYBUTTON) == LOW)) {
+  } else if ((digitalRead(BUTTON1) == LOW) || (digitalRead(ROTARYBUTTON) == LOW)) {
     if ((millis() - buttonTimer) > buttonDelay) {
       buttonTimer = millis();
       ResetNormalDisplay();
@@ -433,7 +435,7 @@ void EditBeerName() {
     } else {
       tft.print(tmpbeerName);          
     }
-    if ((digitalRead(BUTTON1) == HIGH) || (digitalRead(ROTARYBUTTON) == LOW)) {
+    if ((digitalRead(BUTTON1) == LOW) || (digitalRead(ROTARYBUTTON) == LOW)) {
       if ((millis() - buttonTimer) > buttonDelay) {
         buttonTimer = millis();
         if (editChar == false) { // save name and exit
@@ -446,7 +448,7 @@ void EditBeerName() {
           editChar = false;
         }
       }
-    } else if (digitalRead(BUTTON2) == HIGH) {
+    } else if (digitalRead(BUTTON2) == LOW) {
       if ((millis() - buttonTimer) > buttonDelay) {
         buttonTimer = millis();
         if (editChar == false) { // enter char edit mode
@@ -537,12 +539,12 @@ void CalibrateScale() {
         tft.fillScreen(BLACK);
         doneEditing = true;
       }
-    } else if (digitalRead(BUTTON1) == HIGH) {
+    } else if (digitalRead(BUTTON1) == LOW) {
       if ((millis() - buttonTimer) > buttonDelay) {
         tmpCalibrationFactor = -11030;
         buttonTimer = millis();
       }
-    } else if (digitalRead(BUTTON2) == HIGH) {
+    } else if (digitalRead(BUTTON2) == LOW) {
       if ((millis() - buttonTimer) > buttonDelay) {
         scaleCalibrationFactor = tmpCalibrationFactor;
         EEPROM.put(30, scaleCalibrationFactor);
@@ -595,13 +597,13 @@ void WeighEmptyKeg() {
     tft.setTextColor(WHITE, BLACK);
     tft.setCursor(298, 70);
     tft.print("lbs");
-    if ((digitalRead(BUTTON1) == HIGH) || (digitalRead(ROTARYBUTTON) == LOW)) {
+    if ((digitalRead(BUTTON1) == LOW) || (digitalRead(ROTARYBUTTON) == LOW)) {
       if ((millis() - buttonTimer) > buttonDelay) {
         buttonTimer = millis();
         tft.fillScreen(BLACK);
         doneEditing = true;
       }
-    } else if (digitalRead(BUTTON2) == HIGH) {
+    } else if (digitalRead(BUTTON2) == LOW) {
       if ((millis() - buttonTimer) > buttonDelay) {
         emptyKegWeight = tmpEmptyKegWeight;
         EEPROM.put(40, emptyKegWeight);
@@ -639,13 +641,13 @@ void CalibrateFlowmeter() { // Modify pulses/sec up to decrease flow reading, do
     tft.setCursor(252, 70);
     tft.setTextColor(LIGHTGREEN, BLACK);
     tft.print(tmpFlowmeterPulsesPerSecond, 1);
-    if ((digitalRead(BUTTON1) == HIGH) || (digitalRead(ROTARYBUTTON) == LOW)) {
+    if ((digitalRead(BUTTON1) == LOW) || (digitalRead(ROTARYBUTTON) == LOW)) {
       if ((millis() - buttonTimer) > buttonDelay) {
         buttonTimer = millis();
         tft.fillScreen(BLACK);
         doneEditing = true;
       }
-    } else if (digitalRead(BUTTON2) == HIGH) {
+    } else if (digitalRead(BUTTON2) == LOW) {
       if ((millis() - buttonTimer) > buttonDelay) {
         flowmeterPulsesPerSecond = tmpFlowmeterPulsesPerSecond;
         EEPROM.put(45, flowmeterPulsesPerSecond);

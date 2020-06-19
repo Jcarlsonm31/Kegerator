@@ -18,35 +18,40 @@ PIR
 
 BUTTON 1
 --------
-SW 5
+SW 14
 LED 11
-Resitor to GND
 
 BUTTON 2
 --------
-SW 6
+SW 15
 LED 12
-Resistor to GND
 
 ROTARY ENCODER
 ---------
-CLK A0
-DT A1
+CLK 18
+DT 19
 SW 4
 5V
 GND
 
 FLOWMETER
 ---------
-24
+46
 
 TEMP
 ---------
-3
+48
 
-SCALE
+SCALE 1
 ---------
 5V
 GND
-CLK 14
-DOUT 15
+CLK A14
+DOUT A15
+
+SCALE 2
+---------
+5V
+GND
+CLK 25
+DOUT 24
