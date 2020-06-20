@@ -116,9 +116,7 @@ void setup() {
   pinMode(BUTTON2LED, OUTPUT);
   analogWrite(BUTTON2LED, 55);
   pinMode(BUTTON1, INPUT_PULLUP);
-  digitalWrite(BUTTON1, LOW);
   pinMode(BUTTON2, INPUT_PULLUP);
-  digitalWrite(BUTTON2, LOW);
   pinMode(PIR, INPUT);
   pinMode(FLOWSENSOR, INPUT);
   digitalWrite(FLOWSENSOR, HIGH);
