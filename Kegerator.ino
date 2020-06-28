@@ -16,7 +16,6 @@ volatile boolean updateRotaryRight = false;
 // pin 5 seems flakey on this particular Mega, don't use it
 #define TEMP 48        // temp sensor pin
 #define DHTTYPE DHT22 // temp sensor type DHT 22  (AM2302), AM2321
-#define TFTBACKLIGHT 13  // TFT LED backlight
 #define PIR 7         // PIR infrared sensor
 #define FLOWSENSOR 46 // flow meter
 #define BUTTON1 14     // lighted button
@@ -29,10 +28,11 @@ volatile boolean updateRotaryRight = false;
 #define SCALE2CLK 25  // 2nd load sensor based scale
 #define SCALE2DOUT 24
 HX711 scale;
-#define BACKLIGHTDURATION 60  // time to leave backlight on once triggered
+#define BACKLIGHTDURATION 10  // time to leave backlight on once triggered
 #define TFT_CS 10
 #define TFT_DC 9
 #define TFT_RST 8
+#define TFTBACKLIGHT 6  // TFT LED backlight
 Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, TFT_RST);
 #define BLACK 0x0000
 #define RED 0xF800
@@ -243,6 +243,17 @@ void DrawKegWeight() {
   tft.print(currentKegWeight, 1);
 }
 
+void CheckSetupMode() { // setup menu entry mode
+  if (digitalRead(ROTARYBUTTON) == LOW) {
+    if ((millis() - buttonTimer) > buttonDelay) {
+      buttonTimer = millis();
+      displayMode = SETUP;
+      tft.fillScreen(BLACK);
+      updateRotaryLeft = false;
+      updateRotaryRight = false;    }
+  }
+}
+
 void SetupMenuMode() {
   DisplaySetupMenu();
   SetupMenuInput();
@@ -388,17 +399,6 @@ void FadeLEDs(bool OnOff) {
       tftFillToggle = false;
     }
     digitalWrite(TFTBACKLIGHT, LOW);
-  }
-}
-
-void CheckSetupMode() { // setup menu entry mode
-  if (digitalRead(ROTARYBUTTON) == LOW) {
-    if ((millis() - buttonTimer) > buttonDelay) {
-      buttonTimer = millis();
-      displayMode = SETUP;
-      tft.fillScreen(BLACK);
-      updateRotaryLeft = false;
-      updateRotaryRight = false;    }
   }
 }
 
@@ -707,12 +707,14 @@ void DisplayPouringMode() {
 
 void GetBeersRemaining() {
   float zeroedWeight;
-  currentKegWeight = scale.get_units(); //Get a baseline zero reading with no weight
-  zeroedWeight = currentKegWeight - emptyKegWeight;
-  if (zeroedWeight < 0.0) {
-    zeroedWeight = 0.0;
+  if (scale.is_ready()) {
+    currentKegWeight = scale.get_units(); //Get a baseline zero reading with no weight
+    zeroedWeight = currentKegWeight - emptyKegWeight;
+    if (zeroedWeight < 0.0) {
+      zeroedWeight = 0.0;
+    }
+    beersRemaining = (zeroedWeight / 1.043); // 1.043lbs per 16oz beer
   }
-  beersRemaining = (zeroedWeight / 1.043); // 1.043lbs per 16oz beer
   DrawBeersRemaining();
   DrawKegWeight();
 }
