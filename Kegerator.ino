@@ -28,7 +28,7 @@ volatile boolean updateRotaryRight = false;
 #define SCALE2CLK 25  // 2nd load sensor based scale
 #define SCALE2DOUT 24
 HX711 scale;
-#define BACKLIGHTDURATION 10  // time to leave backlight on once triggered
+#define BACKLIGHTDURATION 60  // time to leave backlight on once triggered
 #define TFT_CS 10
 #define TFT_DC 9
 #define TFT_RST 8
@@ -367,17 +367,17 @@ void FadeLEDs(bool OnOff) {
   int TFTFadeAmount = 5;
   if (OnOff == true) { // fade on
     ResetNormalDisplay();
+    digitalWrite(TFTBACKLIGHT, HIGH);
     for (int x=0; x<51; x++) {
       LEDBrightness = LEDBrightness + LEDFadeAmount;
       TFTBrightness = TFTBrightness + TFTFadeAmount;
       analogWrite(BUTTON1LED, LEDBrightness);
       analogWrite(BUTTON2LED, LEDBrightness);
-      analogWrite(TFTBACKLIGHT, TFTBrightness);
+      //analogWrite(TFTBACKLIGHT, TFTBrightness);
       delay(20);
     }
     analogWrite(BUTTON1LED, 55);
     analogWrite(BUTTON2LED, 55);
-    digitalWrite(TFTBACKLIGHT, HIGH);
   } else { // fade off
     LEDBrightness = 51;
     TFTBrightness = 255;
@@ -386,11 +386,12 @@ void FadeLEDs(bool OnOff) {
       TFTBrightness = TFTBrightness - TFTFadeAmount;
       analogWrite(BUTTON1LED, LEDBrightness);
       analogWrite(BUTTON2LED, LEDBrightness);
-      analogWrite(TFTBACKLIGHT, TFTBrightness);
+      //analogWrite(TFTBACKLIGHT, TFTBrightness);
       delay(30);
     }
     digitalWrite(BUTTON1LED, LOW);
     digitalWrite(BUTTON2LED, LOW);
+    digitalWrite(TFTBACKLIGHT, LOW);
     if (tftFillToggle == false) {
       tft.fillScreen(WHITE);      
       tftFillToggle = true;
@@ -398,7 +399,6 @@ void FadeLEDs(bool OnOff) {
       tft.fillScreen(BLACK);
       tftFillToggle = false;
     }
-    digitalWrite(TFTBACKLIGHT, LOW);
   }
 }
 
