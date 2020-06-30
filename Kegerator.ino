@@ -28,7 +28,7 @@ volatile boolean updateRotaryRight = false;
 #define SCALE2CLK 25  // 2nd load sensor based scale
 #define SCALE2DOUT 24
 HX711 scale;
-#define BACKLIGHTDURATION 60  // time to leave backlight on once triggered
+#define BACKLIGHTDURATION 15  // time to leave backlight on once triggered
 #define TFT_CS 10
 #define TFT_DC 9
 #define TFT_RST 8
@@ -61,13 +61,15 @@ Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, TFT_RST);
 #define NOOP 0 // rotary encoder return codes
 #define RIGHT 1
 #define LEFT 2
+#define SCREEN_ON 0
+#define SCREEN_OFF 1
 
 #define NUMMENUITEMS 5
 char setupMenuChoices[NUMMENUITEMS][22] = { "Beer Name", "Reset Keg", "Calibrate Scale", "Weigh Empty Keg", "Calibrate Flowmeter" };
 char setupMenuChoice = 0;
 char alphabet[83] = "aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ0123456789-!?$%&*',.[]()<>/=+ ";
 char beerName[25] = "STREET DOG IPA          "; // max 24 char beer name
-int pirState = HIGH;   // we start, assuming no motion detected
+int pirState = SCREEN_ON;   // we start, assuming motion detected
 int pirVal = 0;       // state variable for reading the PIR pin status
 unsigned long pirDelay = 0; // time to wait until dimming backlight
 unsigned long tappedDuration = 0; // count of millis since last reset (new keg)
@@ -101,6 +103,7 @@ long scaleZeroFactor = 96000; // offset weight of empty scale to zero scale
 float emptyKegWeight = 0.0; // used to offset full keg weight
 float currentKegWeight = 0.0;
 DHT dht(TEMP, DHTTYPE);
+
 void setup() {
   Serial.begin(9600);
   pinMode(ROTARYA, INPUT_PULLUP);
@@ -109,6 +112,8 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(19), RotaryA, RISING); // set an interrupt on ROTARYA, looking for a rising edge signal and executing the "RotaryB" Interrupt Service Routine (below)
   tft.begin();
   tft.setRotation(1);
+  pinMode(TFT_RST, OUTPUT);
+  digitalWrite(TFT_RST, HIGH);
   pinMode(TFTBACKLIGHT, OUTPUT);
   digitalWrite(TFTBACKLIGHT, HIGH);
   pinMode(BUTTON1LED, OUTPUT);
@@ -154,14 +159,16 @@ void loop() {
     DisplayPouringMode();
   }
   else {
-    if ((millis() - checkTempDelay) > 5000) {
-      GetTemperature();
-      checkTempDelay = millis();
-    } 
     CheckPIRSensor();
-    GetTappedDays();
-    GetBeersRemaining();
-    CheckSetupMode();   
+    if (pirState == SCREEN_ON){
+      if ((millis() - checkTempDelay) > 5000) {
+        GetTemperature();
+        checkTempDelay = millis();
+      } 
+      GetTappedDays();
+      GetBeersRemaining();
+      CheckSetupMode();   
+    }
   }
 }
 
@@ -171,6 +178,7 @@ void ResetNormalDisplay() {
   tft.fillScreen(BLACK);
   DrawBeerName();
   DrawBeersRemaining();
+  GetTemperature();
   DrawTemp();
   DrawTappedDays();
   DrawKegWeight();
@@ -344,19 +352,22 @@ void GetTappedDays() {
 
 void CheckPIRSensor() {
   pirVal = digitalRead(PIR);  // read input value
-  if (pirVal == HIGH) {            // check if the input is HIGH
-    if (pirState == LOW) {
-      pirState = HIGH;
-      pirDelay = (millis() / 1000);      
+  if (pirVal == HIGH) { // detected motion
+    if (pirState == SCREEN_OFF) {
+      pirState = SCREEN_ON;
       FadeLEDs(true); // turn LEDs ON
     }
-  } else {
-      if ((millis() / 1000) - pirDelay > BACKLIGHTDURATION) {
-        if (pirState == HIGH){
-          pirState = LOW;
-          FadeLEDs(false); // turn LEDs OFF
-        }
+    pirDelay = (millis() / 1000); //reset the backlight duration as long as there's motion      
+  } else { // no motion
+    if ((millis() / 1000) - pirDelay > BACKLIGHTDURATION) {
+      if (pirState == SCREEN_ON){
+        pirState = SCREEN_OFF;
+        FadeLEDs(false); // turn LEDs OFF
+      } else { 
+        CycleTFTBackground(); // cycle black and white to prevent burn in while no motion and screen off
+        pirDelay = (millis() / 1000); // reset the timer to wait before cyling again
       }
+    }
   }
 }
 
@@ -367,17 +378,17 @@ void FadeLEDs(bool OnOff) {
   int TFTFadeAmount = 5;
   if (OnOff == true) { // fade on
     ResetNormalDisplay();
-    digitalWrite(TFTBACKLIGHT, HIGH);
     for (int x=0; x<51; x++) {
       LEDBrightness = LEDBrightness + LEDFadeAmount;
       TFTBrightness = TFTBrightness + TFTFadeAmount;
       analogWrite(BUTTON1LED, LEDBrightness);
       analogWrite(BUTTON2LED, LEDBrightness);
-      //analogWrite(TFTBACKLIGHT, TFTBrightness);
+      analogWrite(TFTBACKLIGHT, TFTBrightness);
       delay(20);
     }
     analogWrite(BUTTON1LED, 55);
     analogWrite(BUTTON2LED, 55);
+    digitalWrite(TFTBACKLIGHT, HIGH);
   } else { // fade off
     LEDBrightness = 51;
     TFTBrightness = 255;
@@ -386,19 +397,22 @@ void FadeLEDs(bool OnOff) {
       TFTBrightness = TFTBrightness - TFTFadeAmount;
       analogWrite(BUTTON1LED, LEDBrightness);
       analogWrite(BUTTON2LED, LEDBrightness);
-      //analogWrite(TFTBACKLIGHT, TFTBrightness);
+      analogWrite(TFTBACKLIGHT, TFTBrightness);
       delay(30);
     }
     digitalWrite(BUTTON1LED, LOW);
-    digitalWrite(BUTTON2LED, LOW);
+    digitalWrite(BUTTON2LED, LOW);  
     digitalWrite(TFTBACKLIGHT, LOW);
-    if (tftFillToggle == false) {
-      tft.fillScreen(WHITE);      
-      tftFillToggle = true;
-    } else {
-      tft.fillScreen(BLACK);
-      tftFillToggle = false;
-    }
+  }
+}
+
+void CycleTFTBackground() {
+  if (tftFillToggle == false) {
+    tft.fillScreen(WHITE);      
+    tftFillToggle = true;
+  } else {
+    tft.fillScreen(BLACK);
+    tftFillToggle = false;
   }
 }
 
