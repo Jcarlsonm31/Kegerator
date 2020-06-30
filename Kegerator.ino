@@ -115,7 +115,8 @@ void setup() {
   pinMode(TFT_RST, OUTPUT);
   digitalWrite(TFT_RST, HIGH);
   pinMode(TFTBACKLIGHT, OUTPUT);
-  digitalWrite(TFTBACKLIGHT, HIGH);
+  //digitalWrite(TFTBACKLIGHT, HIGH);
+  analogWrite(TFTBACKLIGHT, 200);
   pinMode(BUTTON1LED, OUTPUT);
   analogWrite(BUTTON1LED, 55);
   pinMode(BUTTON2LED, OUTPUT);
@@ -375,10 +376,10 @@ void FadeLEDs(bool OnOff) {
   int LEDBrightness = 0;
   int LEDFadeAmount = 1;  // try to fade up to less than 100%
   int TFTBrightness = 0;
-  int TFTFadeAmount = 5;
+  int TFTFadeAmount = 4;
   if (OnOff == true) { // fade on
     ResetNormalDisplay();
-    for (int x=0; x<51; x++) {
+    for (int x=0; x<50; x++) {
       LEDBrightness = LEDBrightness + LEDFadeAmount;
       TFTBrightness = TFTBrightness + TFTFadeAmount;
       analogWrite(BUTTON1LED, LEDBrightness);
@@ -388,11 +389,11 @@ void FadeLEDs(bool OnOff) {
     }
     analogWrite(BUTTON1LED, 55);
     analogWrite(BUTTON2LED, 55);
-    digitalWrite(TFTBACKLIGHT, HIGH);
+    analogWrite(TFTBACKLIGHT, 200);
   } else { // fade off
-    LEDBrightness = 51;
-    TFTBrightness = 255;
-    for (int x=0; x<51; x++) {
+    LEDBrightness = 50;
+    TFTBrightness = 200;
+    for (int x=0; x<50; x++) {
       LEDBrightness = LEDBrightness - LEDFadeAmount;
       TFTBrightness = TFTBrightness - TFTFadeAmount;
       analogWrite(BUTTON1LED, LEDBrightness);
