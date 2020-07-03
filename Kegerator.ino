@@ -338,6 +338,8 @@ void GetTemperature() {
   // Check if temp read failed
   if ((isnan(currentTemp)) || (currentTemp == 0)) {
     currentTemp = prevTemp;
+  } else {
+    prevTemp = currentTemp;
   }
   DrawTemp();
 }
