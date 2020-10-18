@@ -681,7 +681,7 @@ void CalibrateFlowmeter() { // Modify pulses/sec up to decrease flow reading, do
 }
 
 void ResetNewKeg() {
-  tappedDuration = 0;
+  tappedDuration = millis();
   tappedDays = 0;
   EEPROM.put(26, tappedDays);
   beersRemaining = 40.8;
