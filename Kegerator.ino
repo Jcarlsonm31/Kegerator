@@ -31,7 +31,7 @@ HX711 scale;
 #define BACKLIGHTDURATION 15  // time to leave backlight on once triggered
 #define TFT_CS 10
 #define TFT_DC 9
-//#define TFT_RST 8
+#define TFT_RST 8
 #define TFTBACKLIGHT 6  // TFT LED backlight
 Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, TFT_RST);
 #define BLACK 0x0000
@@ -113,7 +113,7 @@ void setup() {
   tft.begin();
   tft.setRotation(1);
   pinMode(TFT_RST, OUTPUT);
-  //digitalWrite(TFT_RST, HIGH);
+  digitalWrite(TFT_RST, HIGH);
   pinMode(TFTBACKLIGHT, OUTPUT);
   analogWrite(TFTBACKLIGHT, 200);
   pinMode(BUTTON1LED, OUTPUT);
@@ -380,31 +380,32 @@ void FadeLEDs(bool OnOff) {
   int TFTFadeAmount = 4;
   if (OnOff == true) { // fade on
     ResetNormalDisplay();
+    digitalWrite(TFTBACKLIGHT, HIGH);
     for (int x=0; x<50; x++) {
       LEDBrightness = LEDBrightness + LEDFadeAmount;
-      TFTBrightness = TFTBrightness + TFTFadeAmount;
+      //TFTBrightness = TFTBrightness + TFTFadeAmount;
       analogWrite(BUTTON1LED, LEDBrightness);
       analogWrite(BUTTON2LED, LEDBrightness);
-      analogWrite(TFTBACKLIGHT, TFTBrightness);
+      //analogWrite(TFTBACKLIGHT, TFTBrightness);
       delay(20);
     }
     analogWrite(BUTTON1LED, 55);
     analogWrite(BUTTON2LED, 55);
-    analogWrite(TFTBACKLIGHT, 200);
+    //analogWrite(TFTBACKLIGHT, 200);
   } else { // fade off
     LEDBrightness = 50;
     TFTBrightness = 200;
+    digitalWrite(TFTBACKLIGHT, LOW);
     for (int x=0; x<50; x++) {
       LEDBrightness = LEDBrightness - LEDFadeAmount;
-      TFTBrightness = TFTBrightness - TFTFadeAmount;
+      //TFTBrightness = TFTBrightness - TFTFadeAmount;
       analogWrite(BUTTON1LED, LEDBrightness);
       analogWrite(BUTTON2LED, LEDBrightness);
-      analogWrite(TFTBACKLIGHT, TFTBrightness);
+      //analogWrite(TFTBACKLIGHT, TFTBrightness);
       delay(30);
     }
     digitalWrite(BUTTON1LED, LOW);
     digitalWrite(BUTTON2LED, LOW);  
-    digitalWrite(TFTBACKLIGHT, LOW);
   }
 }
 
