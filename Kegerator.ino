@@ -75,6 +75,7 @@ unsigned long pirDelay = 0; // time to wait until dimming backlight
 unsigned long tappedDuration = 0; // count of millis since last reset (new keg)
 int tappedDays = 0;
 unsigned long checkTempDelay = 0;
+unsigned long checkTappedDaysDelay = 0;
 volatile unsigned long updatePouringDelay = 0;
 int currentTemp = 0;
 int prevTemp = 0;
@@ -99,7 +100,7 @@ volatile uint32_t lastflowratetimer = 0; // you can try to keep time of how long
 volatile float flowrate; // and use that to calculate a flow rate
 float flowmeterPulsesPerSecond = 8.8;
 float scaleCalibrationFactor = -11030; // calibration offset against a known weight
-long scaleZeroFactor = 96000; // offset weight of empty scale to zero scale
+long scaleZeroFactor = 98431; // offset weight of empty scale to zero scale
 float emptyKegWeight = 0.0; // used to offset full keg weight
 float currentKegWeight = 0.0;
 DHT dht(TEMP, DHTTYPE);
@@ -165,7 +166,10 @@ void loop() {
         GetTemperature();
         checkTempDelay = millis();
       } 
-      GetTappedDays();
+      if ((millis() - checkTappedDaysDelay) > 3600000) {
+        GetTappedDays();
+        checkTappedDaysDelay = millis();
+      } 
       GetBeersRemaining();
       CheckSetupMode();   
     }
@@ -518,7 +522,7 @@ void CalibrateScale() {
   tft.setTextSize(2);
   tft.setTextColor(GRAY);
   tft.setCursor(20, 160);
-  tft.print("Wait then place known weight on scale");
+  tft.print("Wait then place known weight on scale"); 
   tft.setCursor(20, 200);
   tft.print("Right button: save calibration");
   tft.setCursor(20, 240);
@@ -556,6 +560,8 @@ void CalibrateScale() {
       }
     } else if (digitalRead(BUTTON1) == LOW) {
       if ((millis() - buttonTimer) > buttonDelay) {
+        EEPROM.put(35, 98431); //Reset baseline reading
+        scale.set_offset(98431);
         tmpCalibrationFactor = -11030;
         buttonTimer = millis();
       }
